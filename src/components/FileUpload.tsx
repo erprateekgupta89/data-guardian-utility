@@ -1,3 +1,4 @@
+
 import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Upload, FileText, X } from 'lucide-react';
@@ -21,17 +22,20 @@ const FileUpload = ({ onFileLoaded }: FileUploadProps) => {
     const arrayBuffer = await file.arrayBuffer();
     const workbook = read(arrayBuffer);
     const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-    const data = utils.sheet_to_json<Record<string, string>>(firstSheet, { header: 1 });
+    const data = utils.sheet_to_json<any>(firstSheet, { header: 1 });
     
     if (data.length < 2) {
       throw new Error('Excel file is empty or has no data');
     }
 
-    const headers = data[0] as string[];
-    const rows = data.slice(1).map(row => {
+    // Ensure the headers are strings
+    const headers = data[0].map((header: any) => String(header));
+    
+    // Create rows as objects with header keys
+    const rows = data.slice(1).map((row: any) => {
       const rowData: Record<string, string> = {};
-      headers.forEach((header, index) => {
-        rowData[header] = row[index]?.toString() || '';
+      headers.forEach((header: string, index: number) => {
+        rowData[header] = row[index] !== undefined ? String(row[index]) : '';
       });
       return rowData;
     });
