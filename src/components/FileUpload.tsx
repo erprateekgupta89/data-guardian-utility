@@ -1,4 +1,3 @@
-
 import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Upload, FileText, X } from 'lucide-react';
@@ -7,6 +6,7 @@ import { FileData } from '@/types';
 import { parseCSV, detectColumnDataType } from '@/utils/dataDetection';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { read, utils } from 'xlsx';
 
 interface FileUploadProps {
   onFileLoaded: (fileData: FileData) => void;
@@ -17,10 +17,31 @@ const FileUpload = ({ onFileLoaded }: FileUploadProps) => {
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
+  const processExcel = async (file: File): Promise<{ headers: string[], rows: Record<string, string>[] }> => {
+    const arrayBuffer = await file.arrayBuffer();
+    const workbook = read(arrayBuffer);
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+    const data = utils.sheet_to_json<Record<string, string>>(firstSheet, { header: 1 });
+    
+    if (data.length < 2) {
+      throw new Error('Excel file is empty or has no data');
+    }
+
+    const headers = data[0] as string[];
+    const rows = data.slice(1).map(row => {
+      const rowData: Record<string, string> = {};
+      headers.forEach((header, index) => {
+        rowData[header] = row[index]?.toString() || '';
+      });
+      return rowData;
+    });
+
+    return { headers, rows };
+  };
+
   const processFile = useCallback(async (file: File) => {
     setIsUploading(true);
     try {
-      // Check if file is CSV or Excel
       const isCSV = file.name.toLowerCase().endsWith('.csv');
       const isExcel = file.name.toLowerCase().match(/\.(xlsx|xls)$/);
 
@@ -31,44 +52,48 @@ const FileUpload = ({ onFileLoaded }: FileUploadProps) => {
         return;
       }
 
-      // For now, we'll only handle CSV files in this demo
+      let headers: string[];
+      let rows: Record<string, string>[];
+
       if (isCSV) {
         const text = await file.text();
-        const { headers, rows } = parseCSV(text);
-
-        // Sample rows for detection
-        const sampleSize = rows.length > 1000 ? 50 : rows.length;
-        const sampleRows = rows.slice(0, sampleSize);
-
-        // Detect column data types
-        const columns = headers.map(header => {
-          const samples = sampleRows.map(row => row[header]);
-          const dataType = detectColumnDataType(samples);
-          return {
-            id: header.replace(/\s+/g, '_').toLowerCase(),
-            name: header,
-            dataType,
-            sampleData: samples[0] || '',
-            skip: false
-          };
-        });
-
-        const fileData: FileData = {
-          fileName: file.name,
-          fileType: 'csv',
-          columns,
-          data: [...rows], // Copy rows
-          originalData: rows,
-          totalRows: rows.length
-        };
-
-        onFileLoaded(fileData);
-        toast.success(`Successfully loaded ${file.name}`);
-      } else if (isExcel) {
-        // In a real app, you'd use a library like SheetJS to handle Excel files
-        toast.error('Excel support is not implemented in this demo');
-        setSelectedFile(null);
+        const result = parseCSV(text);
+        headers = result.headers;
+        rows = result.rows;
+      } else {
+        const result = await processExcel(file);
+        headers = result.headers;
+        rows = result.rows;
       }
+
+      // Sample rows for detection
+      const sampleSize = rows.length > 1000 ? 50 : rows.length;
+      const sampleRows = rows.slice(0, sampleSize);
+
+      // Detect column data types
+      const columns = headers.map(header => {
+        const samples = sampleRows.map(row => row[header]);
+        const dataType = detectColumnDataType(samples);
+        return {
+          id: header.replace(/\s+/g, '_').toLowerCase(),
+          name: header,
+          dataType,
+          sampleData: samples[0] || '',
+          skip: false
+        };
+      });
+
+      const fileData: FileData = {
+        fileName: file.name,
+        fileType: isCSV ? 'csv' : 'excel',
+        columns,
+        data: [...rows],
+        originalData: rows,
+        totalRows: rows.length
+      };
+
+      onFileLoaded(fileData);
+      toast.success(`Successfully loaded ${file.name}`);
     } catch (error) {
       console.error('Error processing file:', error);
       toast.error('Failed to process file. Please check the format and try again.');

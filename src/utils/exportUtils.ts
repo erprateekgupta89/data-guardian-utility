@@ -1,4 +1,4 @@
-
+import { utils, write } from 'xlsx';
 import { ColumnInfo, ExportFormat, FileData, MaskingConfig } from "@/types";
 
 // Convert JSON to CSV
@@ -129,6 +129,27 @@ export const jsonToSQL = (data: Record<string, string>[], columns: ColumnInfo[],
   return sql;
 };
 
+// Convert JSON to Excel
+export const jsonToExcel = (data: Record<string, string>[], columns: ColumnInfo[]): Blob => {
+  const activeColumns = columns.filter(col => !col.skip);
+  const headers = activeColumns.map(col => col.name);
+  
+  // Prepare worksheet data
+  const wsData = [
+    headers,
+    ...data.map(row => activeColumns.map(col => row[col.name] || ''))
+  ];
+  
+  // Create worksheet
+  const ws = utils.aoa_to_sheet(wsData);
+  const wb = utils.book_new();
+  utils.book_append_sheet(wb, ws, 'Masked Data');
+  
+  // Generate Excel file
+  const excelBuffer = write(wb, { bookType: 'xlsx', type: 'array' });
+  return new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+};
+
 // Export data in the specified format
 export const exportData = (
   fileData: FileData,
@@ -185,13 +206,10 @@ export const exportData = (
     }
     
     case 'Excel': {
-      // For Excel export, we'll actually return CSV data
-      // In a real-world app, you'd use a library like xlsx to generate actual Excel files
-      const csvData = jsonToCSV(data, activeColumns);
       return {
-        data: csvData,
-        filename: `${baseFileName}_masked.csv`, // In real app, would be .xlsx
-        mimeType: 'text/csv' // In real app, would be Excel MIME type
+        data: jsonToExcel(data, activeColumns),
+        filename: `${baseFileName}_masked.xlsx`,
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       };
     }
     
