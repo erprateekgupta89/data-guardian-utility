@@ -1,3 +1,4 @@
+
 import { utils, write } from 'xlsx';
 import { ColumnInfo, ExportFormat, FileData, MaskingConfig } from "@/types";
 
@@ -210,16 +211,6 @@ export const exportData = (
         data: jsonToExcel(data, activeColumns),
         filename: `${baseFileName}_masked.xlsx`,
         mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      };
-    }
-    
-    case 'All': {
-      // For 'All', we'll return a zip file
-      // This is a placeholder - in a real app, you'd use a library like JSZip
-      return {
-        data: 'Multiple formats not implemented in this demo',
-        filename: `${baseFileName}_masked_all.txt`,
-        mimeType: 'text/plain'
       };
     }
     

@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from 'react';
-import { Check, Table } from 'lucide-react';
+import { Table } from 'lucide-react';
 import { ColumnInfo, DataType, FileData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table as UITable, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -8,46 +8,50 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 
 interface DataPreviewProps {
   fileData: FileData;
   onColumnsUpdate: (columns: ColumnInfo[]) => void;
 }
 
+// Sort data types alphabetically
 const DATA_TYPES: DataType[] = [
-  'Email',
   'Address',
-  'Country',
-  'Name',
-  'First Name',
-  'Last Name',
-  'Phone Number',
-  'Int',
-  'Float',
-  'String',
   'Bool',
-  'Gender',
-  'Date',
-  'Time',
-  'Date Time',
   'City',
-  'Currency',
-  'State',
-  'Zipcode',
-  'Credit card number',
-  'User agent',
-  'Postal Code',
-  'Year',
   'Company',
+  'Country',
+  'Credit card number',
+  'Currency',
+  'Date',
+  'Date Time',
   'Date of birth',
+  'Email',
+  'First Name',
+  'Float',
+  'Gender',
+  'Int',
   'Job',
-  'Text',
+  'Last Name',
+  'Name',
   'Password',
+  'Phone Number',
+  'Postal Code',
+  'State',
+  'String',
+  'Text',
+  'Time',
   'Timezone',
+  'User agent',
+  'Year',
+  'Zipcode',
 ];
 
 const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
   const [columns, setColumns] = useState<ColumnInfo[]>(fileData.columns);
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 10;
   
   // Update local columns state when fileData changes
   useEffect(() => {
@@ -80,6 +84,11 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
     onColumnsUpdate(updatedColumns);
   };
 
+  // Calculate pagination
+  const totalPages = Math.ceil(columns.length / rowsPerPage);
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const paginatedColumns = columns.slice(startIndex, startIndex + rowsPerPage);
+
   return (
     <Card className="w-full">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
@@ -94,7 +103,7 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
         </Badge>
       </CardHeader>
       <CardContent className="p-0">
-        <ScrollArea className="h-[400px] rounded-md">
+        <ScrollArea className="h-[400px] rounded-md" orientation="both">
           <UITable>
             <TableHeader className="bg-gray-100 sticky top-0">
               <TableRow>
@@ -105,7 +114,7 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {columns.map((column) => (
+              {paginatedColumns.map((column) => (
                 <TableRow key={column.id}>
                   <TableCell className="font-medium">{column.name}</TableCell>
                   <TableCell>
@@ -115,20 +124,20 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
                   </TableCell>
                   <TableCell>
                     <Select
-                      value={column.dataType}
+                      value={column.dataType !== 'Unknown' ? column.dataType : ''}
                       onValueChange={(value) => handleDataTypeChange(column.id, value as DataType)}
                     >
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select data type" />
                       </SelectTrigger>
                       <SelectContent>
-                        <div className="max-h-[200px] overflow-y-auto">
+                        <ScrollArea className="h-[200px]">
                           {DATA_TYPES.map(type => (
                             <SelectItem key={type} value={type}>
                               {type}
                             </SelectItem>
                           ))}
-                        </div>
+                        </ScrollArea>
                       </SelectContent>
                     </Select>
                   </TableCell>
@@ -148,6 +157,55 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
             </TableBody>
           </UITable>
         </ScrollArea>
+        
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex justify-center py-4">
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious 
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                  />
+                </PaginationItem>
+                
+                {/* Generate page number links */}
+                {Array.from({ length: Math.min(5, totalPages) }).map((_, i) => {
+                  let pageNum: number;
+                  
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+                  
+                  return (
+                    <PaginationItem key={pageNum}>
+                      <PaginationLink
+                        isActive={pageNum === currentPage}
+                        onClick={() => setCurrentPage(pageNum)}
+                      >
+                        {pageNum}
+                      </PaginationLink>
+                    </PaginationItem>
+                  );
+                })}
+                
+                <PaginationItem>
+                  <PaginationNext 
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

@@ -100,7 +100,41 @@ export const detectDataType = (value: string): DataType => {
   if (regexPatterns.gender.test(strValue)) return 'Gender';
   
   // Default to string if no other types match
-  return strValue.length > 100 ? 'Text' : 'String';
+  return strValue.length > 100 ? 'Text' : 'Unknown';
+};
+
+// Infer data type from column name
+const inferTypeFromColumnName = (columnName: string): DataType | null => {
+  const name = columnName.toLowerCase();
+  
+  // Common column name patterns
+  if (/email|e-mail/.test(name)) return 'Email';
+  if (/phone|mobile|contact|cell/.test(name)) return 'Phone Number';
+  if (/^name$|full.?name|customer.?name/.test(name)) return 'Name';
+  if (/first.?name|given.?name/.test(name)) return 'First Name';
+  if (/last.?name|family.?name|sur.?name/.test(name)) return 'Last Name';
+  if (/address|location|residence/.test(name)) return 'Address';
+  if (/city|town|municipality/.test(name)) return 'City';
+  if (/state|province|region/.test(name)) return 'State';
+  if (/country|nation/.test(name)) return 'Country';
+  if (/zip|postal|pin.?code/.test(name)) return 'Postal Code';
+  if (/gender|sex/.test(name)) return 'Gender';
+  if (/dob|birth|born/.test(name)) return 'Date of birth';
+  if (/date/.test(name)) return 'Date';
+  if (/time/.test(name)) return 'Time';
+  if (/datetime|timestamp/.test(name)) return 'Date Time';
+  if (/credit.?card|card.?number|cc.?number/.test(name)) return 'Credit card number';
+  if (/company|organization|business/.test(name)) return 'Company';
+  if (/job|position|title|role|occupation/.test(name)) return 'Job';
+  if (/price|cost|amount|salary|income|pay/.test(name)) return 'Currency';
+  if (/year/.test(name)) return 'Year';
+  if (/password|pwd|pass/.test(name)) return 'Password';
+  if (/timezone|tz/.test(name)) return 'Timezone';
+  if (/text|description|comment|note/.test(name)) return 'Text';
+  if (/agent|browser|useragent/.test(name)) return 'User agent';
+  if (/zip|postal/.test(name)) return 'Zipcode';
+  
+  return null;
 };
 
 // Detect data type from a column of data
@@ -126,7 +160,12 @@ export const detectColumnDataType = (samples: string[]): DataType => {
     }
   });
   
-  // If most values are unknown, try to infer from column name
+  // Return Unknown if we're not confident
+  const confidence = maxCount / samples.length;
+  if (mostCommonType === 'Unknown' || confidence < 0.7) {
+    return 'Unknown';
+  }
+  
   return mostCommonType;
 };
 

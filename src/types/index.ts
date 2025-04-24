@@ -48,7 +48,7 @@ export interface FileData {
   totalRows: number;
 }
 
-export type ExportFormat = 'CSV' | 'Excel' | 'SQL' | 'XML' | 'JSON' | 'All';
+export type ExportFormat = 'CSV' | 'Excel' | 'SQL' | 'XML' | 'JSON';
 
 export interface MaskingConfig {
   preserveFormat: boolean;
