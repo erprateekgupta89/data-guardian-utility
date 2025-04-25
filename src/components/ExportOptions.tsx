@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Download, FileDown, Database, RotateCcw } from 'lucide-react';
 import { ExportFormat, FileData, ColumnInfo, MaskingConfig } from '@/types';
@@ -14,10 +13,11 @@ interface ExportOptionsProps {
   fileData: FileData;
   columns: ColumnInfo[];
   maskedData: Record<string, string>[];
+  maskingConfig: MaskingConfig;
   onReset: () => void;
 }
 
-const ExportOptions = ({ fileData, columns, maskedData, onReset }: ExportOptionsProps) => {
+const ExportOptions = ({ fileData, columns, maskedData, maskingConfig, onReset }: ExportOptionsProps) => {
   const [exportFormat, setExportFormat] = useState<ExportFormat>('CSV');
   const [isExporting, setIsExporting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -28,21 +28,14 @@ const ExportOptions = ({ fileData, columns, maskedData, onReset }: ExportOptions
     setIsExporting(true);
     
     try {
-      // Create config for export
-      const config: MaskingConfig = {
-        preserveFormat: true,
-        createTableSQL: true,
-        tableName: 'masked_data'
-      };
-      
       // Create updated file data with masked data
       const updatedFileData: FileData = {
         ...fileData,
         data: maskedData
       };
       
-      // Export the data
-      const { data, filename, mimeType } = exportData(updatedFileData, format, config);
+      // Export the data using the passed maskingConfig
+      const { data, filename, mimeType } = exportData(updatedFileData, format, maskingConfig);
       
       // Download the file
       downloadFile(data, filename, mimeType);

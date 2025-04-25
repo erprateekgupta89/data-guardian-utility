@@ -8,12 +8,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 interface MaskingOptionsProps {
   fileData: FileData;
   columns: ColumnInfo[];
-  onDataMasked: (maskedData: Record<string, string>[]) => void;
+  onDataMasked: (maskedData: Record<string, string>[], config: MaskingConfig) => void;
 }
+
+// Import MaskingConfig type directly in the component
+import { MaskingConfig } from "@/types";
 
 const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps) => {
   const [tableName, setTableName] = useState('masked_data');
@@ -25,10 +29,17 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
     setIsProcessing(true);
     
     try {
+      // Create config object
+      const maskingConfig: MaskingConfig = {
+        preserveFormat,
+        createTableSQL,
+        tableName
+      };
+      
       // Process data masking (simulate some delay for UX)
       setTimeout(() => {
         const maskedData = maskDataSet(fileData.data, columns);
-        onDataMasked(maskedData);
+        onDataMasked(maskedData, maskingConfig);
         setIsProcessing(false);
       }, 500);
     } catch (error) {
@@ -71,15 +82,22 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
               />
             </div>
             
-            <div className="flex items-center justify-between">
-              <Label htmlFor="createTableSQL" className="cursor-pointer">
-                Include CREATE TABLE in SQL
-              </Label>
-              <Switch
-                id="createTableSQL"
-                checked={createTableSQL}
-                onCheckedChange={setCreateTableSQL}
-              />
+            <div className="space-y-2 mt-4">
+              <Label className="text-sm font-medium">SQL Export Options</Label>
+              <RadioGroup 
+                value={createTableSQL ? "create" : "update"} 
+                onValueChange={(value) => setCreateTableSQL(value === "create")}
+                className="grid gap-2 mt-2"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="create" id="create-table" />
+                  <Label htmlFor="create-table" className="cursor-pointer">Include CREATE TABLE</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="update" id="update-only" />
+                  <Label htmlFor="update-only" className="cursor-pointer">Update Data Schema Only</Label>
+                </div>
+              </RadioGroup>
             </div>
           </div>
         </div>

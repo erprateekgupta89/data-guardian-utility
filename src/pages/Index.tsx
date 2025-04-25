@@ -5,13 +5,18 @@ import DataPreview from '@/components/DataPreview';
 import MaskingOptions from '@/components/MaskingOptions';
 import ExportOptions from '@/components/ExportOptions';
 import SettingsButton from '@/components/SettingsButton';
-import { FileData, ColumnInfo } from '@/types';
+import { FileData, ColumnInfo, MaskingConfig } from '@/types';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 const Index = () => {
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [columns, setColumns] = useState<ColumnInfo[]>([]);
   const [maskedData, setMaskedData] = useState<Record<string, string>[]>([]);
+  const [maskingConfig, setMaskingConfig] = useState<MaskingConfig>({
+    preserveFormat: true,
+    createTableSQL: true,
+    tableName: 'masked_data'
+  });
   const [activeStep, setActiveStep] = useState<'upload' | 'preview' | 'export'>('upload');
 
   // Handle file upload
@@ -27,8 +32,9 @@ const Index = () => {
   };
 
   // Handle masked data
-  const handleDataMasked = (data: Record<string, string>[]) => {
+  const handleDataMasked = (data: Record<string, string>[], config: MaskingConfig) => {
     setMaskedData(data);
+    setMaskingConfig(config);
     setActiveStep('export');
   };
 
@@ -127,6 +133,7 @@ const Index = () => {
                     fileData={fileData!} 
                     columns={columns}
                     maskedData={maskedData}
+                    maskingConfig={maskingConfig}
                     onReset={handleReset}
                   />
                 )}

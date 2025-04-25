@@ -1,3 +1,4 @@
+
 import { utils, write } from 'xlsx';
 import { ColumnInfo, ExportFormat, FileData, MaskingConfig } from "@/types";
 
@@ -219,7 +220,7 @@ export const exportData = (
   }
 };
 
-// Download the exported data
+// Download the exported file
 export const downloadFile = (
   data: string | Blob, 
   filename: string, 
