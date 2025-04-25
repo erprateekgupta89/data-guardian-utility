@@ -6,7 +6,7 @@ import MaskingOptions from '@/components/MaskingOptions';
 import ExportOptions from '@/components/ExportOptions';
 import SettingsButton from '@/components/SettingsButton';
 import { FileData, ColumnInfo } from '@/types';
-import { ResizablePanelGroup, ResizablePanel } from '@/components/ui/resizable';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 const Index = () => {
   const [fileData, setFileData] = useState<FileData | null>(null);
@@ -41,14 +41,19 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="bg-white shadow">
+      <header className="bg-white shadow-sm border-b">
         <div className="max-w-full mx-auto px-4 sm:px-6 py-4">
           <div className="flex justify-between items-center">
-            <h1 className="text-2xl font-bold text-masking-primary">
-              DataMaskingUtility
-            </h1>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">
+                Data Masking Application
+              </h1>
+              <p className="text-sm text-gray-500 mt-1">
+                Securely mask sensitive data in your files
+              </p>
+            </div>
             <SettingsButton />
           </div>
         </div>
@@ -56,59 +61,86 @@ const Index = () => {
 
       {/* Main content */}
       <main className="max-w-full mx-auto px-4 sm:px-6 py-6">
-        <ResizablePanelGroup direction="horizontal" className="min-h-[80vh] rounded-lg border">
-          {/* File Upload Section */}
-          <ResizablePanel defaultSize={25} minSize={20}>
-            <div className="h-full p-4 bg-white">
-              <h2 className="text-xl font-semibold mb-4">Upload File</h2>
-              <FileUpload onFileLoaded={handleFileLoaded} />
-            </div>
-          </ResizablePanel>
+        <Tabs 
+          value={activeStep}
+          onValueChange={(value) => setActiveStep(value as typeof activeStep)}
+          className="w-full"
+        >
+          <TabsList className="w-full justify-start border-b rounded-none h-12 bg-transparent p-0">
+            <TabsTrigger
+              value="upload"
+              className="h-12 px-8 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+            >
+              Upload File
+            </TabsTrigger>
+            <TabsTrigger
+              value="preview"
+              className="h-12 px-8 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+              disabled={!fileData}
+            >
+              Preview & Configure
+            </TabsTrigger>
+            <TabsTrigger
+              value="export"
+              className="h-12 px-8 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+              disabled={!maskedData.length}
+            >
+              Result & Export
+            </TabsTrigger>
+          </TabsList>
 
-          {/* Data Preview Section */}
-          <ResizablePanel defaultSize={40} minSize={30}>
-            <div className="h-full p-4 bg-white border-x">
-              <h2 className="text-xl font-semibold mb-4">Data Type Detection</h2>
-              {fileData && (
-                <>
-                  <DataPreview
-                    fileData={fileData}
-                    onColumnsUpdate={handleColumnsUpdate}
-                  />
-                  <div className="mt-6">
-                    <MaskingOptions 
-                      fileData={fileData} 
-                      columns={columns}
-                      onDataMasked={handleDataMasked}
+          <div className="mt-6">
+            <TabsContent value="upload" className="mt-0">
+              <div className="bg-white p-6 rounded-lg shadow-sm border">
+                <h2 className="text-xl font-semibold mb-4">Upload File</h2>
+                <p className="text-gray-600 mb-6">
+                  Upload a CSV or Excel file to begin. The application will automatically detect data types and suggest masking options.
+                </p>
+                <FileUpload onFileLoaded={handleFileLoaded} />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="preview" className="mt-0">
+              <div className="bg-white p-6 rounded-lg shadow-sm border">
+                {fileData && (
+                  <>
+                    <DataPreview
+                      fileData={fileData}
+                      onColumnsUpdate={handleColumnsUpdate}
                     />
-                  </div>
-                </>
-              )}
-            </div>
-          </ResizablePanel>
+                    <div className="mt-6">
+                      <MaskingOptions 
+                        fileData={fileData} 
+                        columns={columns}
+                        onDataMasked={handleDataMasked}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            </TabsContent>
 
-          {/* Result & Export Section */}
-          <ResizablePanel defaultSize={35} minSize={25}>
-            <div className="h-full p-4 bg-white">
-              <h2 className="text-xl font-semibold mb-4">Result & Export</h2>
-              {maskedData.length > 0 && (
-                <ExportOptions 
-                  fileData={fileData!} 
-                  columns={columns}
-                  maskedData={maskedData}
-                  onReset={handleReset}
-                />
-              )}
-            </div>
-          </ResizablePanel>
-        </ResizablePanelGroup>
+            <TabsContent value="export" className="mt-0">
+              <div className="bg-white p-6 rounded-lg shadow-sm border">
+                {maskedData.length > 0 && (
+                  <ExportOptions 
+                    fileData={fileData!} 
+                    columns={columns}
+                    maskedData={maskedData}
+                    onReset={handleReset}
+                  />
+                )}
+              </div>
+            </TabsContent>
+          </div>
+        </Tabs>
       </main>
 
       {/* Footer */}
       <footer className="bg-white border-t mt-12">
         <div className="max-w-full mx-auto px-4 sm:px-6 py-4">
           <p className="text-center text-gray-500 text-sm">
-            DataMaskingUtility - Securely mask your sensitive data
+            Data Masking Application
           </p>
         </div>
       </footer>
