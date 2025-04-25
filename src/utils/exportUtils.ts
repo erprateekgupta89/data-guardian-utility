@@ -1,4 +1,3 @@
-
 import { utils, write } from 'xlsx';
 import { ColumnInfo, ExportFormat, FileData, MaskingConfig } from "@/types";
 
@@ -54,7 +53,7 @@ export const jsonToXML = (data: Record<string, string>[], columns: ColumnInfo[],
   return xml;
 };
 
-// Convert JSON to SQL
+// Convert JSON to SQL with conditional CREATE TABLE
 export const jsonToSQL = (data: Record<string, string>[], columns: ColumnInfo[], config: MaskingConfig): string => {
   // Only use columns that aren't skipped
   const activeColumns = columns.filter(col => !col.skip);
@@ -62,7 +61,7 @@ export const jsonToSQL = (data: Record<string, string>[], columns: ColumnInfo[],
   
   let sql = '';
   
-  // Add CREATE TABLE statement if requested
+  // Add CREATE TABLE statement only if createTableSQL is true
   if (config.createTableSQL) {
     sql += `CREATE TABLE ${tableName} (\n`;
     
