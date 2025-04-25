@@ -1,4 +1,3 @@
-
 import { DataType } from "@/types";
 
 // Regular expressions for data type detection
@@ -103,42 +102,85 @@ export const detectDataType = (value: string): DataType => {
   return strValue.length > 100 ? 'Text' : 'Unknown';
 };
 
-// Infer data type from column name
+// Enhanced type inference based on column names
 const inferTypeFromColumnName = (columnName: string): DataType | null => {
   const name = columnName.toLowerCase();
   
-  // Common column name patterns
-  if (/email|e-mail/.test(name)) return 'Email';
-  if (/phone|mobile|contact|cell/.test(name)) return 'Phone Number';
+  // Email patterns
+  if (/email|e-mail|mail/.test(name)) return 'Email';
+  
+  // Phone number patterns
+  if (/phone|mobile|contact|cell|tel|fax/.test(name)) return 'Phone Number';
+  
+  // Name patterns
   if (/^name$|full.?name|customer.?name/.test(name)) return 'Name';
-  if (/first.?name|given.?name/.test(name)) return 'First Name';
-  if (/last.?name|family.?name|sur.?name/.test(name)) return 'Last Name';
-  if (/address|location|residence/.test(name)) return 'Address';
+  if (/first.?name|given.?name|fname/.test(name)) return 'First Name';
+  if (/last.?name|family.?name|surname|lname/.test(name)) return 'Last Name';
+  
+  // Location patterns
+  if (/address|location|residence|street|addr/.test(name)) return 'Address';
   if (/city|town|municipality/.test(name)) return 'City';
   if (/state|province|region/.test(name)) return 'State';
   if (/country|nation/.test(name)) return 'Country';
   if (/zip|postal|pin.?code/.test(name)) return 'Postal Code';
+  
+  // Personal information
   if (/gender|sex/.test(name)) return 'Gender';
-  if (/dob|birth|born/.test(name)) return 'Date of birth';
-  if (/date/.test(name)) return 'Date';
-  if (/time/.test(name)) return 'Time';
+  if (/dob|birth|born|birthdate/.test(name)) return 'Date of birth';
+  
+  // Date and time patterns
+  if (/date$|_date|date_/.test(name)) return 'Date';
+  if (/time$|_time/.test(name)) return 'Time';
   if (/datetime|timestamp/.test(name)) return 'Date Time';
-  if (/credit.?card|card.?number|cc.?number/.test(name)) return 'Credit card number';
-  if (/company|organization|business/.test(name)) return 'Company';
-  if (/job|position|title|role|occupation/.test(name)) return 'Job';
-  if (/price|cost|amount|salary|income|pay/.test(name)) return 'Currency';
-  if (/year/.test(name)) return 'Year';
+  
+  // Financial patterns
+  if (/credit.?card|card.?number|cc.?number|ccnum/.test(name)) return 'Credit card number';
+  if (/price|cost|amount|salary|income|pay|fee|charge/.test(name)) return 'Currency';
+  
+  // Organization patterns
+  if (/company|organization|business|employer|corp|firm/.test(name)) return 'Company';
+  if (/job|position|title|role|occupation|designation/.test(name)) return 'Job';
+  
+  // Other common patterns
   if (/password|pwd|pass/.test(name)) return 'Password';
-  if (/timezone|tz/.test(name)) return 'Timezone';
-  if (/text|description|comment|note/.test(name)) return 'Text';
   if (/agent|browser|useragent/.test(name)) return 'User agent';
-  if (/zip|postal/.test(name)) return 'Zipcode';
+  if (/year|yyyy/.test(name)) return 'Year';
+  if (/timezone|tz/.test(name)) return 'Timezone';
+  if (/comment|description|notes|details|text/.test(name)) return 'Text';
   
   return null;
 };
 
-// Detect data type from a column of data
-export const detectColumnDataType = (samples: string[]): DataType => {
+// Enhanced column data type detection with name-based inference
+export const detectColumnDataType = (samples: string[], columnName: string = ''): DataType => {
+  // First try to infer from column name
+  const nameBasedType = inferTypeFromColumnName(columnName);
+  if (nameBasedType) {
+    // Validate the inferred type with sample data
+    const sampleValidation = samples.some(sample => {
+      switch (nameBasedType) {
+        case 'Email':
+          return regexPatterns.email.test(sample);
+        case 'Phone Number':
+          return regexPatterns.phoneNumber.test(sample);
+        case 'Date':
+        case 'Date of birth':
+          return regexPatterns.date1.test(sample) || 
+                 regexPatterns.date2.test(sample) || 
+                 regexPatterns.date3.test(sample);
+        case 'Currency':
+          return regexPatterns.currency.test(sample);
+        default:
+          return true; // For types without specific validation
+      }
+    });
+    
+    if (sampleValidation || samples.length === 0) {
+      return nameBasedType;
+    }
+  }
+
+  // If name-based inference fails or validation fails, fall back to content-based detection
   if (samples.length === 0) return 'Unknown';
   
   // Count occurrences of each data type
@@ -160,7 +202,7 @@ export const detectColumnDataType = (samples: string[]): DataType => {
     }
   });
   
-  // Return Unknown if we're not confident
+  // Require higher confidence for certain types
   const confidence = maxCount / samples.length;
   if (mostCommonType === 'Unknown' || confidence < 0.7) {
     return 'Unknown';
