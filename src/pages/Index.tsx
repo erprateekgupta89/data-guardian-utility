@@ -31,6 +31,14 @@ const Index = () => {
     setActiveStep('export');
   };
 
+  // Handle reset
+  const handleReset = () => {
+    setFileData(null);
+    setColumns([]);
+    setMaskedData([]);
+    setActiveStep('upload');
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -82,6 +90,7 @@ const Index = () => {
                 fileData={fileData!} 
                 columns={columns}
                 maskedData={maskedData}
+                onReset={handleReset}
               />
             </section>
           )}
