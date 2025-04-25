@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Check, Eye } from 'lucide-react';
-import { ColumnInfo, FileData } from '@/types';
+import { ColumnInfo, FileData, MaskingConfig } from '@/types';
 import { maskDataSet } from '@/utils/masking';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,9 +14,6 @@ interface MaskingOptionsProps {
   columns: ColumnInfo[];
   onDataMasked: (maskedData: Record<string, string>[], config: MaskingConfig) => void;
 }
-
-// Import MaskingConfig type directly in the component
-import { MaskingConfig } from "@/types";
 
 const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps) => {
   const [tableName, setTableName] = useState('masked_data');
