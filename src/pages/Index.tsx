@@ -6,6 +6,7 @@ import MaskingOptions from '@/components/MaskingOptions';
 import ExportOptions from '@/components/ExportOptions';
 import SettingsButton from '@/components/SettingsButton';
 import { FileData, ColumnInfo } from '@/types';
+import { ResizablePanelGroup, ResizablePanel } from '@/components/ui/resizable';
 
 const Index = () => {
   const [fileData, setFileData] = useState<FileData | null>(null);
@@ -43,7 +44,7 @@ const Index = () => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+        <div className="max-w-full mx-auto px-4 sm:px-6 py-4">
           <div className="flex justify-between items-center">
             <h1 className="text-2xl font-bold text-masking-primary">
               DataMaskingUtility
@@ -54,52 +55,58 @@ const Index = () => {
       </header>
 
       {/* Main content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-        <div className="space-y-8">
+      <main className="max-w-full mx-auto px-4 sm:px-6 py-6">
+        <ResizablePanelGroup direction="horizontal" className="min-h-[80vh] rounded-lg border">
           {/* File Upload Section */}
-          <section className={activeStep !== 'upload' ? 'opacity-70' : ''}>
-            <h2 className="text-xl font-semibold mb-4">Upload File</h2>
-            <FileUpload onFileLoaded={handleFileLoaded} />
-          </section>
+          <ResizablePanel defaultSize={25} minSize={20}>
+            <div className="h-full p-4 bg-white">
+              <h2 className="text-xl font-semibold mb-4">Upload File</h2>
+              <FileUpload onFileLoaded={handleFileLoaded} />
+            </div>
+          </ResizablePanel>
 
           {/* Data Preview Section */}
-          {fileData && (
-            <section className={activeStep === 'export' ? 'opacity-70' : ''}>
+          <ResizablePanel defaultSize={40} minSize={30}>
+            <div className="h-full p-4 bg-white border-x">
               <h2 className="text-xl font-semibold mb-4">Data Type Detection</h2>
-              <DataPreview
-                fileData={fileData}
-                onColumnsUpdate={handleColumnsUpdate}
-              />
-              
-              {/* Masking Options */}
-              <div className="mt-6">
-                <MaskingOptions 
-                  fileData={fileData} 
-                  columns={columns}
-                  onDataMasked={handleDataMasked}
-                />
-              </div>
-            </section>
-          )}
+              {fileData && (
+                <>
+                  <DataPreview
+                    fileData={fileData}
+                    onColumnsUpdate={handleColumnsUpdate}
+                  />
+                  <div className="mt-6">
+                    <MaskingOptions 
+                      fileData={fileData} 
+                      columns={columns}
+                      onDataMasked={handleDataMasked}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          </ResizablePanel>
 
-          {/* Masked Data Preview & Export */}
-          {maskedData.length > 0 && (
-            <section>
+          {/* Result & Export Section */}
+          <ResizablePanel defaultSize={35} minSize={25}>
+            <div className="h-full p-4 bg-white">
               <h2 className="text-xl font-semibold mb-4">Result & Export</h2>
-              <ExportOptions 
-                fileData={fileData!} 
-                columns={columns}
-                maskedData={maskedData}
-                onReset={handleReset}
-              />
-            </section>
-          )}
-        </div>
+              {maskedData.length > 0 && (
+                <ExportOptions 
+                  fileData={fileData!} 
+                  columns={columns}
+                  maskedData={maskedData}
+                  onReset={handleReset}
+                />
+              )}
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </main>
 
       {/* Footer */}
       <footer className="bg-white border-t mt-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+        <div className="max-w-full mx-auto px-4 sm:px-6 py-4">
           <p className="text-center text-gray-500 text-sm">
             DataMaskingUtility - Securely mask your sensitive data
           </p>
