@@ -1,6 +1,6 @@
 
 import { Settings } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -13,10 +13,39 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { useToast } from '@/hooks/use-toast';
 
 const SettingsButton = () => {
+  const { toast } = useToast();
   const [apiKey, setApiKey] = useState('');
   const [useAI, setUseAI] = useState(false);
+  
+  // Load saved settings
+  useEffect(() => {
+    const savedApiKey = localStorage.getItem('azure_openai_api_key') || '';
+    const savedUseAI = localStorage.getItem('use_ai') === 'true';
+    setApiKey(savedApiKey);
+    setUseAI(savedUseAI);
+  }, []);
+
+  // Save settings when they change
+  const handleUseAIChange = (checked: boolean) => {
+    setUseAI(checked);
+    localStorage.setItem('use_ai', checked.toString());
+    
+    if (checked && !apiKey) {
+      toast({
+        title: "API Key Required",
+        description: "Please enter your OpenAI API key to use AI-enhanced masking.",
+      });
+    }
+  };
+
+  const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newKey = e.target.value;
+    setApiKey(newKey);
+    localStorage.setItem('azure_openai_api_key', newKey);
+  };
   
   return (
     <Dialog>
@@ -40,19 +69,19 @@ const SettingsButton = () => {
             <Switch
               id="use-ai"
               checked={useAI}
-              onCheckedChange={setUseAI}
+              onCheckedChange={handleUseAIChange}
             />
           </div>
           
           {useAI && (
             <div className="space-y-2">
-              <Label htmlFor="api-key">Azure OpenAI API Key</Label>
+              <Label htmlFor="api-key">OpenAI API Key</Label>
               <Input
                 id="api-key"
                 type="password"
                 placeholder="Enter your API key"
                 value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
+                onChange={handleApiKeyChange}
               />
               <p className="text-xs text-gray-500">
                 Your API key is stored locally and never sent to our servers.

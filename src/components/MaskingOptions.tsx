@@ -1,13 +1,16 @@
+
 import { useState } from 'react';
 import { Check, Eye } from 'lucide-react';
 import { ColumnInfo, FileData, MaskingConfig } from '@/types';
 import { maskDataSet } from '@/utils/masking';
+import { maskDataWithAI } from '@/utils/aiMasking';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { useToast } from '@/hooks/use-toast';
 
 interface MaskingOptionsProps {
   fileData: FileData;
@@ -16,12 +19,13 @@ interface MaskingOptionsProps {
 }
 
 const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps) => {
+  const { toast } = useToast();
   const [tableName, setTableName] = useState('masked_data');
   const [preserveFormat, setPreserveFormat] = useState(true);
   const [createTableSQL, setCreateTableSQL] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const handleApplyMasking = () => {
+  const handleApplyMasking = async () => {
     setIsProcessing(true);
     
     try {
@@ -32,15 +36,47 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
         tableName
       };
       
-      // Process data masking (simulate some delay for UX)
-      setTimeout(() => {
-        const maskedData = maskDataSet(fileData.data, columns);
-        onDataMasked(maskedData, maskingConfig);
+      // Check if AI masking is enabled
+      const useAI = localStorage.getItem('use_ai') === 'true';
+      const apiKey = useAI ? localStorage.getItem('azure_openai_api_key') : null;
+
+      if (useAI && !apiKey) {
+        toast({
+          title: "API Key Required",
+          description: "Please enter your OpenAI API key in settings to use AI masking.",
+          variant: "destructive",
+        });
         setIsProcessing(false);
+        return;
+      }
+
+      // Process data masking
+      setTimeout(async () => {
+        try {
+          const maskedData = useAI 
+            ? await maskDataWithAI(fileData, columns)
+            : maskDataSet(fileData.data, columns);
+            
+          onDataMasked(maskedData, maskingConfig);
+        } catch (error) {
+          console.error('Error during masking:', error);
+          toast({
+            title: "Masking Error",
+            description: "An error occurred while masking the data.",
+            variant: "destructive",
+          });
+        } finally {
+          setIsProcessing(false);
+        }
       }, 500);
     } catch (error) {
       console.error('Error during masking:', error);
       setIsProcessing(false);
+      toast({
+        title: "Error",
+        description: "Failed to start masking process.",
+        variant: "destructive",
+      });
     }
   };
 
