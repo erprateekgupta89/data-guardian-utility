@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Table } from 'lucide-react';
 import { ColumnInfo, DataType, FileData } from '@/types';
@@ -8,15 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
-import { Button } from '@/components/ui/button';
 
-interface DataPreviewProps {
-  fileData: FileData;
-  onColumnsUpdate: (columns: ColumnInfo[]) => void;
-}
-
-// Sort data types alphabetically
 const DATA_TYPES: DataType[] = [
   'Address',
   'Bool',
@@ -51,15 +42,40 @@ const DATA_TYPES: DataType[] = [
 
 const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
   const [columns, setColumns] = useState<ColumnInfo[]>(fileData.columns);
-  const [currentPage, setCurrentPage] = useState(1);
-  const rowsPerPage = 10;
   
-  // Update local columns state when fileData changes
   useEffect(() => {
     setColumns(fileData.columns);
   }, [fileData.columns]);
   
-  // Handle data type change
+  const inferDataTypeFromName = (columnName: string): DataType => {
+    const name = columnName.toLowerCase();
+    
+    if (/email|e-mail/.test(name)) return 'Email';
+    if (/phone|mobile|contact|cell/.test(name)) return 'Phone Number';
+    if (/^name$|full.?name|customer.?name/.test(name)) return 'Name';
+    if (/first.?name|given.?name/.test(name)) return 'First Name';
+    if (/last.?name|family.?name|sur.?name/.test(name)) return 'Last Name';
+    if (/address|location|residence/.test(name)) return 'Address';
+    if (/city|town|municipality/.test(name)) return 'City';
+    if (/state|province|region/.test(name)) return 'State';
+    if (/country|nation/.test(name)) return 'Country';
+    if (/zip|postal|pin.?code/.test(name)) return 'Postal Code';
+    if (/gender|sex/.test(name)) return 'Gender';
+    if (/dob|birth|born/.test(name)) return 'Date of birth';
+    if (/date/.test(name)) return 'Date';
+    if (/time/.test(name)) return 'Time';
+    if (/datetime|timestamp/.test(name)) return 'Date Time';
+    if (/credit.?card|card.?number|cc.?number/.test(name)) return 'Credit card number';
+    if (/company|organization|business/.test(name)) return 'Company';
+    if (/job|position|title|role|occupation/.test(name)) return 'Job';
+    if (/price|cost|amount|salary|income|pay/.test(name)) return 'Currency';
+    if (/password|pwd|pass/.test(name)) return 'Password';
+    if (/agent|browser|useragent/.test(name)) return 'User agent';
+    if (/zip|postal/.test(name)) return 'Zipcode';
+    
+    return 'Unknown';
+  };
+
   const handleDataTypeChange = (columnId: string, newType: DataType) => {
     const updatedColumns = columns.map(col => {
       if (col.id === columnId) {
@@ -72,7 +88,6 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
     onColumnsUpdate(updatedColumns);
   };
   
-  // Handle skip checkbox change
   const handleSkipChange = (columnId: string, checked: boolean) => {
     const updatedColumns = columns.map(col => {
       if (col.id === columnId) {
@@ -84,11 +99,6 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
     setColumns(updatedColumns);
     onColumnsUpdate(updatedColumns);
   };
-
-  // Calculate pagination
-  const totalPages = Math.ceil(columns.length / rowsPerPage);
-  const startIndex = (currentPage - 1) * rowsPerPage;
-  const paginatedColumns = columns.slice(startIndex, startIndex + rowsPerPage);
 
   return (
     <Card className="w-full">
@@ -105,116 +115,55 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
       </CardHeader>
       <CardContent className="p-0">
         <ScrollArea className="h-[400px] rounded-md">
-          <UITable>
-            <TableHeader className="bg-gray-100 sticky top-0">
-              <TableRow>
-                <TableHead className="w-[250px]">Column Name</TableHead>
-                <TableHead className="w-[250px]">Sample Data</TableHead>
-                <TableHead className="w-[200px]">Data Type</TableHead>
-                <TableHead className="w-[100px] text-center">Skip Masking</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedColumns.map((column) => (
-                <TableRow key={column.id}>
-                  <TableCell className="font-medium">{column.name}</TableCell>
-                  <TableCell>
-                    <div className="max-w-[250px] truncate">
-                      {column.sampleData}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={column.dataType !== 'Unknown' ? column.dataType : ''}
-                      onValueChange={(value) => handleDataTypeChange(column.id, value as DataType)}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select data type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <ScrollArea className="h-[200px]">
-                          {DATA_TYPES.map(type => (
-                            <SelectItem key={type} value={type}>
-                              {type}
-                            </SelectItem>
-                          ))}
-                        </ScrollArea>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <div className="flex justify-center">
-                      <Checkbox
-                        id={`skip-${column.id}`}
-                        checked={column.skip}
-                        onCheckedChange={(checked) => 
-                          handleSkipChange(column.id, checked === true)
-                        }
-                      />
-                    </div>
-                  </TableCell>
+          <div className="overflow-x-auto">
+            <UITable>
+              <TableHeader className="bg-gray-100 sticky top-0">
+                <TableRow>
+                  <TableHead className="w-[250px]">Column Name</TableHead>
+                  <TableHead className="w-[200px]">Data Type</TableHead>
+                  <TableHead className="w-[100px] text-center">Skip Masking</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </UITable>
-        </ScrollArea>
-        
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex justify-center py-4">
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                    disabled={currentPage === 1}
-                  >
-                    Previous
-                  </Button>
-                </PaginationItem>
-                
-                {/* Generate page number links */}
-                {Array.from({ length: Math.min(5, totalPages) }).map((_, i) => {
-                  let pageNum: number;
-                  
-                  if (totalPages <= 5) {
-                    pageNum = i + 1;
-                  } else if (currentPage <= 3) {
-                    pageNum = i + 1;
-                  } else if (currentPage >= totalPages - 2) {
-                    pageNum = totalPages - 4 + i;
-                  } else {
-                    pageNum = currentPage - 2 + i;
-                  }
-                  
-                  return (
-                    <PaginationItem key={pageNum}>
-                      <PaginationLink
-                        isActive={pageNum === currentPage}
-                        onClick={() => setCurrentPage(pageNum)}
+              </TableHeader>
+              <TableBody>
+                {columns.map((column) => (
+                  <TableRow key={column.id}>
+                    <TableCell className="font-medium">{column.name}</TableCell>
+                    <TableCell>
+                      <Select
+                        value={column.dataType !== 'Unknown' ? column.dataType : ''}
+                        onValueChange={(value) => handleDataTypeChange(column.id, value as DataType)}
                       >
-                        {pageNum}
-                      </PaginationLink>
-                    </PaginationItem>
-                  );
-                })}
-                
-                <PaginationItem>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                    disabled={currentPage === totalPages}
-                  >
-                    Next
-                  </Button>
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select data type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <ScrollArea className="h-[200px]">
+                            {DATA_TYPES.map(type => (
+                              <SelectItem key={type} value={type}>
+                                {type}
+                              </SelectItem>
+                            ))}
+                          </ScrollArea>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <div className="flex justify-center">
+                        <Checkbox
+                          id={`skip-${column.id}`}
+                          checked={column.skip}
+                          onCheckedChange={(checked) => 
+                            handleSkipChange(column.id, checked === true)
+                          }
+                        />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </UITable>
           </div>
-        )}
+        </ScrollArea>
       </CardContent>
     </Card>
   );
