@@ -8,6 +8,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 
+interface DataPreviewProps {
+  fileData: FileData;
+  onColumnsUpdate: (columns: ColumnInfo[]) => void;
+}
+
 const DATA_TYPES: DataType[] = [
   'Address',
   'Bool',
