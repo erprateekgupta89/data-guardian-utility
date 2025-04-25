@@ -1,4 +1,3 @@
-
 import { ColumnInfo, DataType } from "@/types";
 
 // Generate a random string of specified length
@@ -16,10 +15,32 @@ const randomNumber = (min: number, max: number): number => {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 };
 
+// Add new helper function to get unique values from a column
+const getUniqueValues = (data: Record<string, string>[], columnName: string): string[] => {
+  const values = new Set<string>();
+  data.forEach(row => {
+    if (row[columnName]) {
+      values.add(row[columnName]);
+    }
+  });
+  return Array.from(values);
+};
+
+// Add new helper function to get a random sample of data
+const getRandomSample = (data: Record<string, string>[], sampleSize: number): Record<string, string>[] => {
+  const shuffled = [...data].sort(() => 0.5 - Math.random());
+  return shuffled.slice(0, Math.min(sampleSize, data.length));
+};
+
 // Mask data based on its type and original format
-export const maskData = (value: string, dataType: DataType): string => {
+export const maskData = (value: string, dataType: DataType, format?: string, constantValues?: string[]): string => {
   if (!value || value.trim() === '') return value;
   
+  // If constant values are provided, use them instead of generating new values
+  if (constantValues?.length) {
+    return constantValues[Math.floor(Math.random() * constantValues.length)];
+  }
+
   switch(dataType) {
     case 'Email': {
       const parts = value.split('@');
@@ -327,14 +348,35 @@ export const maskDataSet = (
   data: Record<string, string>[],
   columns: ColumnInfo[]
 ): Record<string, string>[] => {
-  return data.map(row => {
+  // If data has more than 1000 rows, take a random sample of 100 rows
+  const workingData = data.length > 1000 ? getRandomSample(data, 100) : data;
+  
+  // Get unique values for each column
+  const columnUniqueValues: Record<string, string[]> = {};
+  columns.forEach(column => {
+    // Only get unique values if the column has less than 20 unique values
+    // This helps identify columns with constant/fixed values
+    const uniqueValues = getUniqueValues(workingData, column.name);
+    if (uniqueValues.length < 20) {
+      columnUniqueValues[column.name] = uniqueValues;
+    }
+  });
+  
+  return workingData.map(row => {
     const maskedRow: Record<string, string> = {};
     
     columns.forEach(column => {
       if (column.skip) {
         maskedRow[column.name] = row[column.name];
       } else {
-        maskedRow[column.name] = maskData(row[column.name], column.dataType);
+        // Pass constant values if they exist for this column
+        const constantValues = columnUniqueValues[column.name];
+        maskedRow[column.name] = maskData(
+          row[column.name], 
+          column.dataType,
+          row[column.name], // Pass original value as format
+          constantValues
+        );
       }
     });
     
