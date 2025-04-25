@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-import { Download, FileDown, Database, Reset } from 'lucide-react';
+import { Download, FileDown, Database, RotateCcw } from 'lucide-react';
 import { ExportFormat, FileData, ColumnInfo, MaskingConfig } from '@/types';
 import { downloadFile, exportData } from '@/utils/exportUtils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -83,7 +83,7 @@ const ExportOptions = ({ fileData, columns, maskedData, onReset }: ExportOptions
               onClick={handleReset}
               className="flex items-center gap-2"
             >
-              <Reset className="w-4 h-4" />
+              <RotateCcw className="w-4 h-4" />
               Reset Data
             </Button>
           </div>

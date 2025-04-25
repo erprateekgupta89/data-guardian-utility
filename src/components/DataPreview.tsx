@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import { Button } from '@/components/ui/button';
 
 interface DataPreviewProps {
   fileData: FileData;
@@ -103,7 +104,7 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
         </Badge>
       </CardHeader>
       <CardContent className="p-0">
-        <ScrollArea className="h-[400px] rounded-md" orientation="both">
+        <ScrollArea className="h-[400px] rounded-md">
           <UITable>
             <TableHeader className="bg-gray-100 sticky top-0">
               <TableRow>
@@ -164,10 +165,14 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
             <Pagination>
               <PaginationContent>
                 <PaginationItem>
-                  <PaginationPrevious 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                     disabled={currentPage === 1}
-                  />
+                  >
+                    Previous
+                  </Button>
                 </PaginationItem>
                 
                 {/* Generate page number links */}
@@ -197,10 +202,14 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
                 })}
                 
                 <PaginationItem>
-                  <PaginationNext 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                     disabled={currentPage === totalPages}
-                  />
+                  >
+                    Next
+                  </Button>
                 </PaginationItem>
               </PaginationContent>
             </Pagination>
