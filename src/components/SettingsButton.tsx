@@ -58,13 +58,13 @@ const SettingsButton = () => {
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
           <DialogDescription>
-            Configure AI-assisted data masking options
+            Configure Azure OpenAI-assisted data masking options
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="flex items-center justify-between">
             <Label htmlFor="use-ai" className="cursor-pointer">
-              Use AI for enhanced masking
+              Use Azure OpenAI for enhanced masking
             </Label>
             <Switch
               id="use-ai"
@@ -75,16 +75,16 @@ const SettingsButton = () => {
           
           {useAI && (
             <div className="space-y-2">
-              <Label htmlFor="api-key">OpenAI API Key</Label>
+              <Label htmlFor="api-key">Azure OpenAI API Key</Label>
               <Input
                 id="api-key"
                 type="password"
-                placeholder="Enter your API key"
+                placeholder="Enter your Azure OpenAI API key"
                 value={apiKey}
                 onChange={handleApiKeyChange}
               />
               <p className="text-xs text-gray-500">
-                Your API key is stored locally and never sent to our servers.
+                Your Azure OpenAI API key is stored locally and never sent to our servers.
               </p>
             </div>
           )}
@@ -95,3 +95,4 @@ const SettingsButton = () => {
 };
 
 export default SettingsButton;
+

@@ -1,7 +1,10 @@
-
 import { toast } from "sonner";
 import { ColumnInfo, DataType, FileData } from '@/types';
 import { getRandomSample } from './maskingHelpers';
+
+// Azure OpenAI configuration
+const AZURE_OPENAI_ENDPOINT = "https://qatai.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2025-01-01-preview";
+const AZURE_OPENAI_API_VERSION = "2025-01-01-preview";
 
 // Function to validate the API key (stored in localStorage)
 export const validateApiKey = (): string => {
@@ -23,15 +26,13 @@ export const generateWithOpenAI = async (prompt: string, type: DataType, count: 
     Format example: ["item1", "item2", "item3"]
     Each item in the array must be a simple string, not an object.`;
     
-    const endpoint = "https://api.openai.com/v1/chat/completions";
-    const response = await fetch(endpoint, {
+    const response = await fetch(AZURE_OPENAI_ENDPOINT, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
+        "api-key": apiKey,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: prompt }
@@ -43,8 +44,8 @@ export const generateWithOpenAI = async (prompt: string, type: DataType, count: 
 
     const data = await response.json();
     if (data.error) {
-      console.error("OpenAI API error:", data.error);
-      throw new Error(data.error.message || "OpenAI API error");
+      console.error("Azure OpenAI API error:", data.error);
+      throw new Error(data.error.message || "Azure OpenAI API error");
     }
 
     const content = data.choices[0].message.content.trim();
@@ -58,8 +59,8 @@ export const generateWithOpenAI = async (prompt: string, type: DataType, count: 
       return Array(count).fill(content);
     }
   } catch (error) {
-    console.error("OpenAI generation error:", error);
-    toast.error("Failed to generate data with OpenAI");
+    console.error("Azure OpenAI generation error:", error);
+    toast.error("Failed to generate data with Azure OpenAI");
     throw error;
   }
 };
