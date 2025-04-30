@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from '@/hooks/use-toast';
+import { Progress } from '@/components/ui/progress';
 
 interface MaskingOptionsProps {
   fileData: FileData;
@@ -24,9 +25,11 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
   const [preserveFormat, setPreserveFormat] = useState(true);
   const [createTableSQL, setCreateTableSQL] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [progress, setProgress] = useState(0);
 
   const handleApplyMasking = async () => {
     setIsProcessing(true);
+    setProgress(0);
     
     try {
       // Create config object
@@ -43,11 +46,34 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
       if (useAI && !apiKey) {
         toast({
           title: "API Key Required",
-          description: "Please enter your OpenAI API key in settings to use AI masking.",
+          description: "Please enter your Azure OpenAI API key in settings to use AI masking.",
           variant: "destructive",
         });
         setIsProcessing(false);
         return;
+      }
+
+      // Start progress animation
+      let progressInterval: NodeJS.Timeout;
+      
+      if (useAI) {
+        // For AI masking, we'll use a smoother progress animation
+        progressInterval = setInterval(() => {
+          setProgress((prev) => {
+            // Progress more slowly for AI operations
+            const increment = prev < 60 ? 1 : prev < 80 ? 0.5 : 0.3;
+            const nextProgress = prev + increment;
+            return nextProgress >= 95 ? 95 : nextProgress;
+          });
+        }, 300);
+      } else {
+        // For regular masking, we'll make progress faster
+        progressInterval = setInterval(() => {
+          setProgress((prev) => {
+            const nextProgress = prev + 3;
+            return nextProgress >= 95 ? 95 : nextProgress;
+          });
+        }, 100);
       }
 
       // Process data masking
@@ -56,22 +82,28 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
           const maskedData = useAI 
             ? await maskDataWithAI(fileData, columns)
             : maskDataSet(fileData.data, columns);
-            
-          onDataMasked(maskedData, maskingConfig);
+          
+          clearInterval(progressInterval);
+          setProgress(100);
+          
+          setTimeout(() => {
+            onDataMasked(maskedData, maskingConfig);
+          }, 500); // Short delay to show 100% completion
         } catch (error) {
+          clearInterval(progressInterval);
           console.error('Error during masking:', error);
           toast({
             title: "Masking Error",
             description: "An error occurred while masking the data.",
             variant: "destructive",
           });
-        } finally {
           setIsProcessing(false);
         }
       }, 500);
     } catch (error) {
       console.error('Error during masking:', error);
       setIsProcessing(false);
+      setProgress(0);
       toast({
         title: "Error",
         description: "Failed to start masking process.",
@@ -99,6 +131,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
               value={tableName}
               onChange={(e) => setTableName(e.target.value)}
               placeholder="Enter table name for SQL export"
+              disabled={isProcessing}
             />
           </div>
           
@@ -111,6 +144,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
                 id="preserveFormat"
                 checked={preserveFormat}
                 onCheckedChange={setPreserveFormat}
+                disabled={isProcessing}
               />
             </div>
             
@@ -120,19 +154,36 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
                 value={createTableSQL ? "create" : "update"} 
                 onValueChange={(value) => setCreateTableSQL(value === "create")}
                 className="grid gap-2 mt-2"
+                disabled={isProcessing}
               >
                 <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="create" id="create-table" />
+                  <RadioGroupItem value="create" id="create-table" disabled={isProcessing} />
                   <Label htmlFor="create-table" className="cursor-pointer">Include CREATE TABLE</Label>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="update" id="update-only" />
+                  <RadioGroupItem value="update" id="update-only" disabled={isProcessing} />
                   <Label htmlFor="update-only" className="cursor-pointer">Update Data Schema Only</Label>
                 </div>
               </RadioGroup>
             </div>
           </div>
         </div>
+        
+        {isProcessing && (
+          <div className="space-y-2 py-2">
+            <div className="flex justify-between items-center">
+              <Label className="text-sm">Processing...</Label>
+              <span className="text-xs text-gray-500">{Math.round(progress)}%</span>
+            </div>
+            <Progress value={progress} className="h-2" />
+            <p className="text-xs text-gray-500 italic text-center">
+              {progress < 40 ? "Analyzing data..." : 
+               progress < 70 ? "Generating masked values..." : 
+               progress < 95 ? "Finalizing results..." : 
+               "Complete!"}
+            </p>
+          </div>
+        )}
         
         <div className="pt-4">
           <Button 
