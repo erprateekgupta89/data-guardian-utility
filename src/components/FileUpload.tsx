@@ -70,14 +70,28 @@ const FileUpload = ({ onFileLoaded }: FileUploadProps) => {
         rows = result.rows;
       }
 
-      // Sample rows for detection
-      const sampleSize = rows.length > 1000 ? 50 : rows.length;
-      const sampleRows = rows.slice(0, sampleSize);
+      // Enhanced sampling for data type detection
+      // For larger datasets, take a strategic sample that includes 
+      // data from beginning, middle, and end
+      const totalRows = rows.length;
+      let sampleRows: Record<string, string>[] = rows;
+      
+      if (totalRows > 100) {
+        const sampleSize = Math.min(100, Math.ceil(totalRows * 0.1));
+        const startSample = rows.slice(0, Math.floor(sampleSize / 3));
+        const middleSample = rows.slice(
+          Math.floor(totalRows / 2) - Math.floor(sampleSize / 6), 
+          Math.floor(totalRows / 2) + Math.floor(sampleSize / 6)
+        );
+        const endSample = rows.slice(totalRows - Math.floor(sampleSize / 3));
+        
+        sampleRows = [...startSample, ...middleSample, ...endSample];
+      }
 
-      // Detect column data types
+      // Detect column data types with improved algorithm
       const columns = headers.map(header => {
-        const samples = sampleRows.map(row => row[header]);
-        const dataType = detectColumnDataType(samples);
+        const samples = sampleRows.map(row => row[header]).filter(Boolean);
+        const dataType = detectColumnDataType(samples, header);
         return {
           id: header.replace(/\s+/g, '_').toLowerCase(),
           name: header,

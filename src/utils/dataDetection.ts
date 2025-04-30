@@ -19,6 +19,8 @@ const regexPatterns = {
   dateTime: /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/,
   name: /^[A-Za-z]+(?: [A-Za-z]+)*$/,
   gender: /^(male|female|m|f|other)$/i,
+  ssn: /^\d{3}-\d{2}-\d{4}$/,
+  url: /^(https?:\/\/)?[\w-]+(\.[\w-]+)+[/#?]?.*$/,
 };
 
 // Check if a value passes Luhn algorithm for credit card validation
@@ -60,6 +62,12 @@ export const detectDataType = (value: string): DataType => {
   // Credit Card
   if (regexPatterns.creditCard.test(strValue) && passesLuhnCheck(strValue)) return 'Credit card number';
   
+  // URL detection
+  if (regexPatterns.url.test(strValue)) return 'String';
+  
+  // SSN detection
+  if (regexPatterns.ssn.test(strValue)) return 'String';
+  
   // Zip/Postal Codes
   if (regexPatterns.zipCodeIndia.test(strValue) || regexPatterns.zipCodeUS.test(strValue)) return 'Postal Code';
   
@@ -99,22 +107,22 @@ export const detectDataType = (value: string): DataType => {
   if (regexPatterns.gender.test(strValue)) return 'Gender';
   
   // Default to string if no other types match
-  return strValue.length > 100 ? 'Text' : 'Unknown';
+  return strValue.length > 100 ? 'Text' : 'String';
 };
 
-// Enhanced type inference based on column names
-const inferTypeFromColumnName = (columnName: string): DataType | null => {
+// Enhanced column name based type inference with more patterns
+export const inferTypeFromColumnName = (columnName: string): DataType | null => {
   const name = columnName.toLowerCase();
   
   // Email patterns
-  if (/email|e-mail|mail/.test(name)) return 'Email';
+  if (/email|e-mail|mail\b|email_?address/.test(name)) return 'Email';
   
   // Phone number patterns
-  if (/phone|mobile|contact|cell|tel|fax/.test(name)) return 'Phone Number';
+  if (/phone|mobile|contact|cell|tel|fax|tele|number/.test(name)) return 'Phone Number';
   
   // Name patterns
-  if (/^name$|full.?name|customer.?name/.test(name)) return 'Name';
-  if (/first.?name|given.?name|fname/.test(name)) return 'First Name';
+  if (/^name$|full.?name|customer.?name|person|name.?|display.?name|user.?name/.test(name)) return 'Name';
+  if (/first.?name|given.?name|fname|forename/.test(name)) return 'First Name';
   if (/last.?name|family.?name|surname|lname/.test(name)) return 'Last Name';
   
   // Location patterns
@@ -126,38 +134,52 @@ const inferTypeFromColumnName = (columnName: string): DataType | null => {
   
   // Personal information
   if (/gender|sex/.test(name)) return 'Gender';
-  if (/dob|birth|born|birthdate/.test(name)) return 'Date of birth';
+  if (/dob|birth|born|birthdate|birthday|age/.test(name)) return 'Date of birth';
+  if (/ssn|social.?security|tax.?id|identifier/.test(name)) return 'String';
+  
+  // URL and web related
+  if (/url|link|website|web.?site|site|domain/.test(name)) return 'String';
   
   // Date and time patterns
-  if (/date$|_date|date_/.test(name)) return 'Date';
-  if (/time$|_time/.test(name)) return 'Time';
+  if (/date$|_date|date_|created|updated|timestamp/.test(name)) return 'Date';
+  if (/time$|_time|hour|minute|second/.test(name)) return 'Time';
   if (/datetime|timestamp/.test(name)) return 'Date Time';
   
   // Financial patterns
-  if (/credit.?card|card.?number|cc.?number|ccnum/.test(name)) return 'Credit card number';
-  if (/price|cost|amount|salary|income|pay|fee|charge/.test(name)) return 'Currency';
+  if (/credit.?card|card.?number|cc.?number|ccnum|payment.?card/.test(name)) return 'Credit card number';
+  if (/price|cost|amount|salary|income|pay|fee|charge|money|dollar|euro|rupee|pound|yen/.test(name)) return 'Currency';
   
   // Organization patterns
   if (/company|organization|business|employer|corp|firm/.test(name)) return 'Company';
   if (/job|position|title|role|occupation|designation/.test(name)) return 'Job';
+  
+  // Boolean patterns
+  if (/active|enabled|status|flag|is.?|has.?|should.?|can.?|allow|approve/.test(name)) return 'Bool';
+  
+  // Numeric patterns
+  if (/count|number|qty|quantity|total|sum|amount|num/.test(name) && !(/phone|contact|cell|tel/.test(name))) return 'Int';
+  if (/percent|ratio|rate|average|avg|decimal|float|double/.test(name)) return 'Float';
   
   // Other common patterns
   if (/password|pwd|pass/.test(name)) return 'Password';
   if (/agent|browser|useragent/.test(name)) return 'User agent';
   if (/year|yyyy/.test(name)) return 'Year';
   if (/timezone|tz/.test(name)) return 'Timezone';
-  if (/comment|description|notes|details|text/.test(name)) return 'Text';
+  if (/comment|description|notes|details|text|content|message|feedback|info|about/.test(name)) return 'Text';
+  if (/id$|_id|^id_|uuid|guid/.test(name)) return 'String';
   
   return null;
 };
 
-// Enhanced column data type detection with name-based inference
+// Advanced column data type detection with improved confidence scoring
 export const detectColumnDataType = (samples: string[], columnName: string = ''): DataType => {
   // First try to infer from column name
   const nameBasedType = inferTypeFromColumnName(columnName);
   if (nameBasedType) {
     // Validate the inferred type with sample data
     const sampleValidation = samples.some(sample => {
+      if (!sample || sample.trim() === '') return false;
+      
       switch (nameBasedType) {
         case 'Email':
           return regexPatterns.email.test(sample);
@@ -169,7 +191,13 @@ export const detectColumnDataType = (samples: string[], columnName: string = '')
                  regexPatterns.date2.test(sample) || 
                  regexPatterns.date3.test(sample);
         case 'Currency':
-          return regexPatterns.currency.test(sample);
+          return regexPatterns.currency.test(sample) || /^[\d,.]+$/.test(sample);
+        case 'Int':
+          return regexPatterns.int.test(sample);
+        case 'Float':
+          return regexPatterns.float.test(sample);
+        case 'Bool':
+          return regexPatterns.bool.test(sample);
         default:
           return true; // For types without specific validation
       }
@@ -183,32 +211,76 @@ export const detectColumnDataType = (samples: string[], columnName: string = '')
   // If name-based inference fails or validation fails, fall back to content-based detection
   if (samples.length === 0) return 'Unknown';
   
-  // Count occurrences of each data type
-  const typeCounts: Record<DataType, number> = {} as Record<DataType, number>;
+  // Remove empty samples
+  const validSamples = samples.filter(s => s && s.trim() !== '');
+  if (validSamples.length === 0) return 'Unknown';
   
-  samples.forEach(sample => {
+  // Count occurrences of each data type with confidence scoring
+  const typeCounts: Record<DataType, number> = {} as Record<DataType, number>;
+  const typeConfidence: Record<DataType, number> = {} as Record<DataType, number>;
+  
+  // Priority weights for different data types
+  const typePriority = {
+    'Email': 1.5,
+    'Credit card number': 1.5,
+    'Phone Number': 1.3,
+    'Date': 1.3,
+    'Date of birth': 1.3,
+    'Date Time': 1.3,
+    'Currency': 1.2,
+    'Name': 1.2,
+    'Address': 1.2,
+    'Int': 0.7,
+    'Float': 0.8,
+    'String': 0.5
+  };
+  
+  validSamples.forEach(sample => {
     const type = detectDataType(sample);
     typeCounts[type] = (typeCounts[type] || 0) + 1;
+    
+    // Apply priority weights
+    const priority = (typePriority as any)[type] || 1.0;
+    typeConfidence[type] = (typeConfidence[type] || 0) + priority;
   });
   
-  // Find the most common data type
-  let maxCount = 0;
-  let mostCommonType: DataType = 'Unknown';
+  // Find the most confident data type
+  let maxConfidence = 0;
+  let mostConfidentType: DataType = 'Unknown';
   
-  Object.entries(typeCounts).forEach(([type, count]) => {
-    if (count > maxCount) {
-      maxCount = count;
-      mostCommonType = type as DataType;
+  Object.entries(typeConfidence).forEach(([type, confidence]) => {
+    if (confidence > maxConfidence) {
+      maxConfidence = confidence;
+      mostConfidentType = type as DataType;
     }
   });
   
-  // Require higher confidence for certain types
-  const confidence = maxCount / samples.length;
-  if (mostCommonType === 'Unknown' || confidence < 0.7) {
-    return 'Unknown';
+  // Calculate percentage of samples matching the most confident type
+  const typePercentage = typeCounts[mostConfidentType] / validSamples.length;
+  
+  // If the confidence is low, fall back to more general types based on data pattern
+  if (typePercentage < 0.6 || mostConfidentType === 'Unknown') {
+    // Check if numeric values are predominant
+    const numericTypes = ['Int', 'Float', 'Currency'];
+    const totalNumeric = numericTypes.reduce((sum, type) => sum + (typeCounts[type as DataType] || 0), 0);
+    
+    if (totalNumeric / validSamples.length > 0.7) {
+      return 'Float'; // Default to Float for mixed numeric data
+    }
+    
+    // Check if date-like values are predominant
+    const dateTypes = ['Date', 'Date Time', 'Time', 'Date of birth'];
+    const totalDates = dateTypes.reduce((sum, type) => sum + (typeCounts[type as DataType] || 0), 0);
+    
+    if (totalDates / validSamples.length > 0.5) {
+      return 'Date'; // Default to Date for mixed date-like data
+    }
+    
+    // Default to String for mixed data
+    return 'String';
   }
   
-  return mostCommonType;
+  return mostConfidentType;
 };
 
 // Parse CSV data

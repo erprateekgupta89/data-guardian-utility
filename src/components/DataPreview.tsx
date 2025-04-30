@@ -1,5 +1,6 @@
+
 import { useState, useEffect } from 'react';
-import { Table } from 'lucide-react';
+import { Table, Info } from 'lucide-react';
 import { ColumnInfo, DataType, FileData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table as UITable, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -7,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface DataPreviewProps {
   fileData: FileData;
@@ -47,39 +49,11 @@ const DATA_TYPES: DataType[] = [
 
 const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
   const [columns, setColumns] = useState<ColumnInfo[]>(fileData.columns);
+  const [automaticInference, setAutomaticInference] = useState(true);
   
   useEffect(() => {
     setColumns(fileData.columns);
   }, [fileData.columns]);
-  
-  const inferDataTypeFromName = (columnName: string): DataType => {
-    const name = columnName.toLowerCase();
-    
-    if (/email|e-mail/.test(name)) return 'Email';
-    if (/phone|mobile|contact|cell/.test(name)) return 'Phone Number';
-    if (/^name$|full.?name|customer.?name/.test(name)) return 'Name';
-    if (/first.?name|given.?name/.test(name)) return 'First Name';
-    if (/last.?name|family.?name|sur.?name/.test(name)) return 'Last Name';
-    if (/address|location|residence/.test(name)) return 'Address';
-    if (/city|town|municipality/.test(name)) return 'City';
-    if (/state|province|region/.test(name)) return 'State';
-    if (/country|nation/.test(name)) return 'Country';
-    if (/zip|postal|pin.?code/.test(name)) return 'Postal Code';
-    if (/gender|sex/.test(name)) return 'Gender';
-    if (/dob|birth|born/.test(name)) return 'Date of birth';
-    if (/date/.test(name)) return 'Date';
-    if (/time/.test(name)) return 'Time';
-    if (/datetime|timestamp/.test(name)) return 'Date Time';
-    if (/credit.?card|card.?number|cc.?number/.test(name)) return 'Credit card number';
-    if (/company|organization|business/.test(name)) return 'Company';
-    if (/job|position|title|role|occupation/.test(name)) return 'Job';
-    if (/price|cost|amount|salary|income|pay/.test(name)) return 'Currency';
-    if (/password|pwd|pass/.test(name)) return 'Password';
-    if (/agent|browser|useragent/.test(name)) return 'User agent';
-    if (/zip|postal/.test(name)) return 'Zipcode';
-    
-    return 'Unknown';
-  };
 
   const handleDataTypeChange = (columnId: string, newType: DataType) => {
     const updatedColumns = columns.map(col => {
@@ -105,6 +79,16 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
     onColumnsUpdate(updatedColumns);
   };
 
+  // Helper function to determine badge color based on data type
+  const getDataTypeBadgeColor = (dataType: DataType) => {
+    if (dataType === 'Unknown') return 'bg-gray-200 text-gray-800';
+    
+    const sensitiveTypes = ['Credit card number', 'Email', 'Phone Number', 'Name', 'Address'];
+    if (sensitiveTypes.includes(dataType)) return 'bg-amber-100 text-amber-800';
+    
+    return 'bg-emerald-100 text-emerald-800';
+  };
+
   return (
     <Card className="w-full">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
@@ -114,9 +98,23 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
             Data Preview
           </div>
         </CardTitle>
-        <Badge variant="outline" className="font-normal">
-          {fileData.totalRows} rows
-        </Badge>
+        <div className="flex items-center space-x-2">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div>
+                  <Info className="h-4 w-4 text-gray-400" />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <p>The system automatically detects data types based on column names and content patterns. You can manually adjust if needed.</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <Badge variant="outline" className="font-normal">
+            {fileData.totalRows} rows
+          </Badge>
+        </div>
       </CardHeader>
       <CardContent className="p-0">
         <ScrollArea className="h-[400px] rounded-md">
@@ -132,25 +130,52 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
               <TableBody>
                 {columns.map((column) => (
                   <TableRow key={column.id}>
-                    <TableCell className="font-medium">{column.name}</TableCell>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center space-x-2">
+                        <span>{column.name}</span>
+                        {column.sampleData && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div>
+                                  <Info className="h-4 w-4 text-gray-400" />
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p className="text-xs">Sample: {column.sampleData}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>
-                      <Select
-                        value={column.dataType !== 'Unknown' ? column.dataType : ''}
-                        onValueChange={(value) => handleDataTypeChange(column.id, value as DataType)}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select data type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <ScrollArea className="h-[200px]">
-                            {DATA_TYPES.map(type => (
-                              <SelectItem key={type} value={type}>
-                                {type}
-                              </SelectItem>
-                            ))}
-                          </ScrollArea>
-                        </SelectContent>
-                      </Select>
+                      <div className="space-y-1">
+                        <div className="flex items-center space-x-2">
+                          <Badge 
+                            className={`${getDataTypeBadgeColor(column.dataType)} px-2 py-0.5 text-xs font-normal`}
+                          >
+                            Auto-detected
+                          </Badge>
+                        </div>
+                        <Select
+                          value={column.dataType !== 'Unknown' ? column.dataType : ''}
+                          onValueChange={(value) => handleDataTypeChange(column.id, value as DataType)}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select data type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <ScrollArea className="h-[200px]">
+                              {DATA_TYPES.map(type => (
+                                <SelectItem key={type} value={type}>
+                                  {type}
+                                </SelectItem>
+                              ))}
+                            </ScrollArea>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </TableCell>
                     <TableCell className="text-center">
                       <div className="flex justify-center">
