@@ -33,64 +33,101 @@ export const generateWithOpenAI = async (prompt: string, type: DataType, origina
     - Length (approximately the same number of characters)
     - Structure (e.g., if phone number has format XXX-XXX-XXXX, maintain that exact structure)`;
     
-    const response = await fetch(AZURE_OPENAI_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "api-key": apiKey,
-      },
-      body: JSON.stringify({
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.7 // Balanced between consistency and variety
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Azure OpenAI API error:", errorText);
-      throw new Error(`Azure OpenAI API error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    if (data.error) {
-      console.error("Azure OpenAI API error:", data.error);
-      throw new Error(data.error.message || "Azure OpenAI API error");
-    }
-
-    const content = data.choices[0].message.content.trim();
+    console.log(`Making API request to Azure OpenAI for type: ${type}`);
     
-    // Try to extract a JSON array from the response
     try {
-      const jsonMatch = content.match(/\[.*\]/s);
-      const jsonContent = jsonMatch ? jsonMatch[0] : content;
-      const parsedItems = JSON.parse(jsonContent);
+      const controller = new AbortController();
+      // Set a timeout of 15 seconds for the fetch request
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
       
-      if (Array.isArray(parsedItems)) {
-        return parsedItems.slice(0, count);
+      const response = await fetch(AZURE_OPENAI_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "api-key": apiKey,
+        },
+        body: JSON.stringify({
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: prompt }
+          ],
+          temperature: 0.7 // Balanced between consistency and variety
+        }),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Azure OpenAI API error:", errorText);
+        console.error(`Status: ${response.status}, Status Text: ${response.statusText}`);
+        
+        // More detailed error handling based on status code
+        let errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
+        
+        if (response.status === 401) {
+          errorMessage = "Authentication failed. Please check your API key.";
+        } else if (response.status === 403) {
+          errorMessage = "Access denied. Your API key might not have sufficient permissions.";
+        } else if (response.status === 429) {
+          errorMessage = "Rate limit exceeded. Please try again later.";
+        } else if (response.status >= 500) {
+          errorMessage = "Azure OpenAI service is currently unavailable. Please try again later.";
+        }
+        
+        throw new Error(errorMessage);
       }
-    } catch (error) {
-      console.warn("Failed to parse JSON from API response, using fallback extraction", error);
-    }
-    
-    // Fallback: try to extract values even if the format isn't perfect JSON
-    const items = content
-      .replace(/[\[\]"']/g, '')
-      .split(',')
-      .map(item => item.trim())
-      .filter(Boolean);
       
-    if (items.length > 0) {
-      return items.slice(0, count);
+      const data = await response.json();
+      console.log("API response received successfully");
+      
+      if (data.error) {
+        console.error("Azure OpenAI API error:", data.error);
+        throw new Error(data.error.message || "Azure OpenAI API error");
+      }
+      
+      const content = data.choices[0].message.content.trim();
+      console.log("Response content:", content.substring(0, 100) + (content.length > 100 ? "..." : ""));
+      
+      // Try to extract a JSON array from the response
+      try {
+        const jsonMatch = content.match(/\[.*\]/s);
+        const jsonContent = jsonMatch ? jsonMatch[0] : content;
+        const parsedItems = JSON.parse(jsonContent);
+        
+        if (Array.isArray(parsedItems)) {
+          return parsedItems.slice(0, count);
+        } else {
+          console.warn("API returned valid JSON but not an array:", parsedItems);
+        }
+      } catch (error) {
+        console.warn("Failed to parse JSON from API response, using fallback extraction", error);
+      }
+      
+      // Fallback: try to extract values even if the format isn't perfect JSON
+      const items = content
+        .replace(/[\[\]"']/g, '')
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean);
+        
+      if (items.length > 0) {
+        return items.slice(0, count);
+      }
+      
+      // Last resort fallback
+      return [content.substring(0, originalValue.length)];
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        console.error("Request timed out");
+        throw new Error("Request to Azure OpenAI timed out. Please try again later.");
+      }
+      throw error;
     }
-    
-    // Last resort fallback
-    return [content.substring(0, originalValue.length)];
   } catch (error) {
     console.error("Azure OpenAI generation error:", error);
-    toast.error("Failed to generate data with Azure OpenAI");
+    toast.error(`AI masking failed: ${error.message || "Unknown error"}`);
     throw error;
   }
 };
@@ -105,6 +142,9 @@ export const maskDataWithAI = async (
   count: number = 1
 ): Promise<Record<string, string>[]> => {
   try {
+    // Reset the consistent replacements for a new masking operation
+    consistentReplacements.clear();
+    
     // Step 1: Sample the data if there are more than 1000 rows
     let workingData = fileData.data;
     if (workingData.length > 1000) {
@@ -121,6 +161,17 @@ export const maskDataWithAI = async (
         columnValueMap.set(column.name, uniqueValuesMap);
       }
     });
+
+    // Number of columns to process
+    const columnsToProcess = columns.filter(column => !column.skip).length;
+    
+    // If no columns to process, return original data
+    if (columnsToProcess === 0) {
+      console.log("No columns selected for masking, returning original data");
+      return workingData;
+    }
+
+    console.log(`Starting AI masking for ${columnsToProcess} columns and ${workingData.length} rows`);
 
     // Step 3: Process each row with consistent replacements for unique values
     const maskedData = await Promise.all(
@@ -169,10 +220,11 @@ export const maskDataWithAI = async (
       })
     );
 
+    console.log(`AI masking completed successfully for ${maskedData.length} rows`);
     return maskedData;
   } catch (error) {
     console.error("Error while masking data:", error);
-    toast.error("Failed to mask data with AI");
+    toast.error(`Failed to mask data with AI: ${error.message || "Unknown error"}`);
     throw error;
   }
 };
