@@ -40,18 +40,29 @@ export const generateWithOpenAI = async (prompt: string, type: DataType, origina
       // Set a timeout of 15 seconds for the fetch request
       const timeoutId = setTimeout(() => controller.abort(), 15000);
       
+      // Generate a unique request identifier to prevent caching
+      const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+      
       const response = await fetch(AZURE_OPENAI_ENDPOINT, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "api-key": apiKey,
+          // Add cache control headers to prevent 304 responses
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
+          // Add a unique header to ensure a fresh response each time
+          "X-Request-ID": requestId
         },
         body: JSON.stringify({
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: prompt }
           ],
-          temperature: 0.7 // Balanced between consistency and variety
+          temperature: 0.7, // Balanced between consistency and variety
+          // Add a random seed parameter to prevent caching based on identical requests
+          seed: Math.floor(Math.random() * 10000000)
         }),
         signal: controller.signal
       });
@@ -62,11 +73,16 @@ export const generateWithOpenAI = async (prompt: string, type: DataType, origina
         const errorText = await response.text();
         console.error("Azure OpenAI API error:", errorText);
         console.error(`Status: ${response.status}, Status Text: ${response.statusText}`);
+        console.error(`Response headers:`, Object.fromEntries([...response.headers.entries()]));
         
         // More detailed error handling based on status code
         let errorMessage = `Azure OpenAI API error: ${response.status} ${response.statusText}`;
         
-        if (response.status === 401) {
+        if (response.status === 304) {
+          errorMessage = "API returned cached response (304). Trying again with cache-busting...";
+          // If we get a 304, try again with a different request ID
+          return generateWithOpenAI(prompt, type, originalValue, count);
+        } else if (response.status === 401) {
           errorMessage = "Authentication failed. Please check your API key.";
         } else if (response.status === 403) {
           errorMessage = "Access denied. Your API key might not have sufficient permissions.";
@@ -78,6 +94,10 @@ export const generateWithOpenAI = async (prompt: string, type: DataType, origina
         
         throw new Error(errorMessage);
       }
+      
+      // Log response headers to diagnose caching issues
+      console.log("Response headers:", Object.fromEntries([...response.headers.entries()]));
+      console.log(`Response status: ${response.status}`);
       
       const data = await response.json();
       console.log("API response received successfully");
@@ -204,7 +224,10 @@ export const maskDataWithAI = async (
             const prompt = `Generate a realistic replacement for this ${column.dataType} value: "${originalValue}"
             The replacement must match the exact format, length, and style of the original.`;
             
-            const newData = await generateWithOpenAI(prompt, column.dataType, originalValue, count);
+            // Add timestamp to make each request unique
+            const uniquePrompt = `${prompt}\nTimestamp: ${Date.now()}`;
+            
+            const newData = await generateWithOpenAI(uniquePrompt, column.dataType, originalValue, count);
             const replacementValue = newData[0] || originalValue;
             
             // Store for consistent replacements
