@@ -1,9 +1,13 @@
+
 import { useState } from 'react';
 import { Download, FileDown, Database, RotateCcw } from 'lucide-react';
 import { ExportFormat, FileData, ColumnInfo, MaskingConfig } from '@/types';
 import { downloadFile, exportData } from '@/utils/exportUtils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'sonner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -21,21 +25,32 @@ const ExportOptions = ({ fileData, columns, maskedData, maskingConfig, onReset }
   const [exportFormat, setExportFormat] = useState<ExportFormat>('CSV');
   const [isExporting, setIsExporting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const rowsPerPage = 25; // Increased from 10 to 25
+  const [tableName, setTableName] = useState(maskingConfig.tableName || 'masked_data');
+  const [createTableSQL, setCreateTableSQL] = useState(maskingConfig.createTableSQL);
+  const rowsPerPage = 25;
   
   const handleExport = (format: ExportFormat) => {
     setExportFormat(format);
     setIsExporting(true);
     
     try {
+      // Update the maskingConfig with current SQL settings if SQL is selected
+      const updatedConfig: MaskingConfig = {
+        ...maskingConfig,
+        ...(format === 'SQL' && {
+          tableName,
+          createTableSQL
+        })
+      };
+      
       // Create updated file data with masked data
       const updatedFileData: FileData = {
         ...fileData,
         data: maskedData
       };
       
-      // Export the data using the passed maskingConfig
-      const { data, filename, mimeType } = exportData(updatedFileData, format, maskingConfig);
+      // Export the data using the updated maskingConfig
+      const { data, filename, mimeType } = exportData(updatedFileData, format, updatedConfig);
       
       // Download the file
       downloadFile(data, filename, mimeType);
@@ -170,13 +185,13 @@ const ExportOptions = ({ fileData, columns, maskedData, maskingConfig, onReset }
         
         <div>
           <h3 className="font-medium text-sm mb-3">Export Format</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {(['CSV', 'Excel', 'JSON', 'SQL', 'XML'] as ExportFormat[]).map((format) => (
               <Button
                 key={format}
-                variant={exportFormat === format ? "default" : "outline"}
-                className={exportFormat === format ? "bg-masking-secondary hover:bg-masking-primary" : ""}
-                onClick={() => handleExport(format)}
+                variant="outline"
+                className={`${exportFormat === format ? "bg-masking-secondary text-white hover:bg-masking-primary" : ""}`}
+                onClick={() => setExportFormat(format)}
                 disabled={isExporting}
               >
                 <FileDown className="mr-2 h-4 w-4" />
@@ -186,9 +201,58 @@ const ExportOptions = ({ fileData, columns, maskedData, maskingConfig, onReset }
           </div>
         </div>
         
-        <div className="text-center text-gray-500 text-sm pt-2">
-          {isExporting ? 'Exporting...' : 'Click on a format above to export'}
-        </div>
+        {/* SQL-specific options only shown when SQL is selected */}
+        {exportFormat === 'SQL' && (
+          <div className="space-y-4 p-4 border rounded-md bg-gray-50">
+            <div className="space-y-2">
+              <Label htmlFor="tableName">SQL Table Name</Label>
+              <Input
+                id="tableName"
+                value={tableName}
+                onChange={(e) => setTableName(e.target.value)}
+                placeholder="Enter table name for SQL export"
+              />
+            </div>
+            
+            <div className="space-y-2 mt-4">
+              <Label className="text-sm font-medium">SQL Export Options</Label>
+              <RadioGroup 
+                value={createTableSQL ? "create" : "update"} 
+                onValueChange={(value) => setCreateTableSQL(value === "create")}
+                className="grid gap-2 mt-2"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="create" id="create-table" />
+                  <Label htmlFor="create-table" className="cursor-pointer">Include CREATE TABLE</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="update" id="update-only" />
+                  <Label htmlFor="update-only" className="cursor-pointer">Update Data Schema Only</Label>
+                </div>
+              </RadioGroup>
+            </div>
+          </div>
+        )}
+        
+        <Button
+          className="w-full bg-masking-secondary hover:bg-masking-primary text-white"
+          onClick={() => handleExport(exportFormat)}
+          disabled={isExporting}
+        >
+          {isExporting ? (
+            <span className="flex items-center">
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Exporting...
+            </span>
+          ) : (
+            <span className="flex items-center">
+              <Download className="mr-2 h-4 w-4" /> Export as {exportFormat}
+            </span>
+          )}
+        </Button>
       </CardContent>
     </Card>
   );
