@@ -1,3 +1,4 @@
+
 export type DataType = 
   | 'Email'
   | 'Address'
@@ -50,8 +51,7 @@ export interface FileData {
 export type ExportFormat = 'CSV' | 'Excel' | 'SQL' | 'XML' | 'JSON';
 
 export interface MaskingConfig {
-  preserveFormat?: boolean;
-  createTableSQL?: boolean;
-  tableName?: string;
-  updateSchemaOnly?: boolean;
+  preserveFormat: boolean;
+  createTableSQL: boolean;
+  tableName: string;
 }

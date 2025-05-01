@@ -9,8 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from '@/hooks/use-toast';
-import { Progress } from '@/components/ui/progress';
 
 interface MaskingOptionsProps {
   fileData: FileData;
@@ -24,13 +24,9 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
   const [preserveFormat, setPreserveFormat] = useState(true);
   const [createTableSQL, setCreateTableSQL] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [statusMessage, setStatusMessage] = useState('');
 
   const handleApplyMasking = async () => {
     setIsProcessing(true);
-    setProgress(0);
-    setStatusMessage('Initializing masking process...');
     
     try {
       // Create config object
@@ -54,52 +50,14 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
         return;
       }
 
-      // Setup progress updates
-      const totalSteps = useAI ? 5 : 3;
-      let currentStep = 0;
-      
-      const updateProgress = (step: string, stepProgress: number = 1) => {
-        currentStep += stepProgress;
-        setProgress(Math.min(Math.round((currentStep / totalSteps) * 100), 95));
-        setStatusMessage(step);
-      };
-
-      updateProgress('Analyzing data columns...');
-      
-      // Simulate some processing time to show the progress bar
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      updateProgress('Preparing masking patterns...');
-      
-      // Process data masking with a slightly longer delay for a better UX
+      // Process data masking
       setTimeout(async () => {
         try {
-          // This will simulate chunks of work being done
-          if (useAI) {
-            updateProgress('Connecting to AI service...');
-            await new Promise(resolve => setTimeout(resolve, 500));
+          const maskedData = useAI 
+            ? await maskDataWithAI(fileData, columns)
+            : maskDataSet(fileData.data, columns);
             
-            updateProgress('Generating AI-enhanced masking...');
-            const maskedData = await maskDataWithAI(fileData, columns);
-            updateProgress('Finalizing masked data...');
-            
-            onDataMasked(maskedData, maskingConfig);
-          } else {
-            updateProgress('Applying masking rules...');
-            const maskedData = maskDataSet(fileData.data, columns);
-            updateProgress('Finalizing masked data...');
-            
-            onDataMasked(maskedData, maskingConfig);
-          }
-          
-          // Complete progress
-          setProgress(100);
-          setStatusMessage('Masking complete!');
-          
-          toast({
-            title: "Masking Complete",
-            description: `Successfully masked ${columns.filter(c => !c.skip).length} columns of data.`,
-          });
+          onDataMasked(maskedData, maskingConfig);
         } catch (error) {
           console.error('Error during masking:', error);
           toast({
@@ -108,17 +66,12 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
             variant: "destructive",
           });
         } finally {
-          // Short delay before resetting the processing state to show 100% completion
-          setTimeout(() => {
-            setIsProcessing(false);
-            setStatusMessage('');
-          }, 800);
+          setIsProcessing(false);
         }
-      }, useAI ? 800 : 400); // Longer delay for AI masking for better UX
+      }, 500);
     } catch (error) {
       console.error('Error during masking:', error);
       setIsProcessing(false);
-      setStatusMessage('');
       toast({
         title: "Error",
         description: "Failed to start masking process.",
@@ -138,27 +91,48 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex items-center justify-between">
-          <Label htmlFor="preserveFormat" className="cursor-pointer">
-            Preserve Data Format
-          </Label>
-          <Switch
-            id="preserveFormat"
-            checked={preserveFormat}
-            onCheckedChange={setPreserveFormat}
-            disabled={isProcessing}
-          />
-        </div>
-        
-        {isProcessing && (
-          <div className="space-y-2 pt-2">
-            <div className="flex justify-between items-center">
-              <p className="text-sm text-gray-500">{statusMessage}</p>
-              <span className="text-sm font-medium">{progress}%</span>
-            </div>
-            <Progress value={progress} className="h-2" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="tableName">SQL Table Name</Label>
+            <Input
+              id="tableName"
+              value={tableName}
+              onChange={(e) => setTableName(e.target.value)}
+              placeholder="Enter table name for SQL export"
+            />
           </div>
-        )}
+          
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="preserveFormat" className="cursor-pointer">
+                Preserve Data Format
+              </Label>
+              <Switch
+                id="preserveFormat"
+                checked={preserveFormat}
+                onCheckedChange={setPreserveFormat}
+              />
+            </div>
+            
+            <div className="space-y-2 mt-4">
+              <Label className="text-sm font-medium">SQL Export Options</Label>
+              <RadioGroup 
+                value={createTableSQL ? "create" : "update"} 
+                onValueChange={(value) => setCreateTableSQL(value === "create")}
+                className="grid gap-2 mt-2"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="create" id="create-table" />
+                  <Label htmlFor="create-table" className="cursor-pointer">Include CREATE TABLE</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="update" id="update-only" />
+                  <Label htmlFor="update-only" className="cursor-pointer">Update Data Schema Only</Label>
+                </div>
+              </RadioGroup>
+            </div>
+          </div>
+        </div>
         
         <div className="pt-4">
           <Button 
