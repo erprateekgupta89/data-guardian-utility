@@ -1,5 +1,6 @@
+
 import { useState } from 'react';
-import { Download, FileDown, Database, RotateCcw } from 'lucide-react';
+import { FileDown, Database, RotateCcw, ChevronDown } from 'lucide-react';
 import { ExportFormat, FileData, ColumnInfo, MaskingConfig } from '@/types';
 import { downloadFile, exportData } from '@/utils/exportUtils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -8,6 +9,15 @@ import { toast } from 'sonner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Form, FormField, FormItem, FormLabel, FormControl } from '@/components/ui/form';
+import { useForm } from 'react-hook-form';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 
 interface ExportOptionsProps {
   fileData: FileData;
@@ -17,17 +27,47 @@ interface ExportOptionsProps {
   onReset: () => void;
 }
 
+interface SqlOptions {
+  createTableSQL: boolean;
+  updateSchemaOnly: boolean;
+  tableName: string;
+}
+
 const ExportOptions = ({ fileData, columns, maskedData, maskingConfig, onReset }: ExportOptionsProps) => {
   const [exportFormat, setExportFormat] = useState<ExportFormat>('CSV');
   const [isExporting, setIsExporting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [showSqlOptions, setShowSqlOptions] = useState(false);
+  const [sqlOptions, setSqlOptions] = useState<SqlOptions>({
+    createTableSQL: maskingConfig.createTableSQL || true,
+    updateSchemaOnly: false,
+    tableName: maskingConfig.tableName || 'masked_data'
+  });
   const rowsPerPage = 25; // Increased from 10 to 25
+
+  const form = useForm({
+    defaultValues: {
+      createTableSQL: sqlOptions.createTableSQL,
+      updateSchemaOnly: sqlOptions.updateSchemaOnly,
+      tableName: sqlOptions.tableName,
+    }
+  });
   
   const handleExport = (format: ExportFormat) => {
     setExportFormat(format);
     setIsExporting(true);
     
     try {
+      // Update SQL options in maskingConfig if SQL format is selected
+      let updatedMaskingConfig = { ...maskingConfig };
+      if (format === 'SQL') {
+        updatedMaskingConfig = {
+          ...maskingConfig,
+          createTableSQL: sqlOptions.createTableSQL,
+          tableName: sqlOptions.tableName,
+        };
+      }
+      
       // Create updated file data with masked data
       const updatedFileData: FileData = {
         ...fileData,
@@ -35,7 +75,7 @@ const ExportOptions = ({ fileData, columns, maskedData, maskingConfig, onReset }
       };
       
       // Export the data using the passed maskingConfig
-      const { data, filename, mimeType } = exportData(updatedFileData, format, maskingConfig);
+      const { data, filename, mimeType } = exportData(updatedFileData, format, updatedMaskingConfig);
       
       // Download the file
       downloadFile(data, filename, mimeType);
@@ -61,6 +101,22 @@ const ExportOptions = ({ fileData, columns, maskedData, maskingConfig, onReset }
       toast.success('Data has been reset successfully');
     }
   };
+
+  // Handle selecting an export format
+  const handleFormatSelect = (format: ExportFormat) => {
+    setExportFormat(format);
+    setShowSqlOptions(format === 'SQL');
+  };
+
+  // Handle SQL options change
+  const handleSqlOptionChange = (option: keyof SqlOptions, value: any) => {
+    setSqlOptions(prev => ({
+      ...prev,
+      [option]: value
+    }));
+  };
+
+  const exportFormats: ExportFormat[] = ['CSV', 'Excel', 'JSON', 'SQL', 'XML'];
 
   return (
     <Card className="w-full">
@@ -167,27 +223,90 @@ const ExportOptions = ({ fileData, columns, maskedData, maskingConfig, onReset }
             </Pagination>
           </div>
         )}
-        
-        <div>
+
+        <div className="space-y-4">
           <h3 className="font-medium text-sm mb-3">Export Format</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {(['CSV', 'Excel', 'JSON', 'SQL', 'XML'] as ExportFormat[]).map((format) => (
+          
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {exportFormats.map((format) => (
               <Button
                 key={format}
                 variant={exportFormat === format ? "default" : "outline"}
                 className={exportFormat === format ? "bg-masking-secondary hover:bg-masking-primary" : ""}
-                onClick={() => handleExport(format)}
-                disabled={isExporting}
+                onClick={() => handleFormatSelect(format)}
               >
                 <FileDown className="mr-2 h-4 w-4" />
                 {format}
               </Button>
             ))}
           </div>
-        </div>
-        
-        <div className="text-center text-gray-500 text-sm pt-2">
-          {isExporting ? 'Exporting...' : 'Click on a format above to export'}
+
+          {/* SQL-specific options */}
+          {showSqlOptions && (
+            <div className="p-4 border rounded-md mt-4 bg-gray-50">
+              <h4 className="font-medium mb-3">SQL Export Options</h4>
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="createTableSQL" 
+                    checked={sqlOptions.createTableSQL}
+                    onCheckedChange={(checked) => 
+                      handleSqlOptionChange('createTableSQL', checked === true)
+                    }
+                  />
+                  <label 
+                    htmlFor="createTableSQL" 
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    Include CREATE TABLE statement
+                  </label>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="updateSchemaOnly" 
+                    checked={sqlOptions.updateSchemaOnly}
+                    onCheckedChange={(checked) => 
+                      handleSqlOptionChange('updateSchemaOnly', checked === true)
+                    }
+                  />
+                  <label 
+                    htmlFor="updateSchemaOnly" 
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    Update schema only (no data)
+                  </label>
+                </div>
+                
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <label htmlFor="tableName" className="text-sm font-medium">
+                    Table Name:
+                  </label>
+                  <input
+                    id="tableName"
+                    value={sqlOptions.tableName}
+                    onChange={(e) => handleSqlOptionChange('tableName', e.target.value)}
+                    className="col-span-3 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+          
+          <div className="flex justify-end mt-4">
+            <Button
+              onClick={() => handleExport(exportFormat)}
+              disabled={isExporting}
+              className="bg-masking-primary hover:bg-masking-secondary"
+            >
+              <FileDown className="mr-2 h-4 w-4" />
+              Export as {exportFormat}
+            </Button>
+          </div>
+          
+          <div className="text-center text-gray-500 text-sm pt-2">
+            {isExporting ? 'Exporting...' : 'Selected format: ' + exportFormat}
+          </div>
         </div>
       </CardContent>
     </Card>

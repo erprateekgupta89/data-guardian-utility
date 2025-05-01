@@ -107,25 +107,27 @@ export const jsonToSQL = (data: Record<string, string>[], columns: ColumnInfo[],
     sql += '\n);\n\n';
   }
   
-  // Add INSERT statements
-  sql += `INSERT INTO ${tableName} (${activeColumns.map(col => col.name).join(', ')})\nVALUES\n`;
-  
-  // Add data rows
-  sql += data.map(row => {
-    return `(${activeColumns.map(col => {
-      const value = row[col.name] || '';
-      
-      // Handle different data types
-      if (['Int', 'Float', 'Bool'].includes(col.dataType)) {
-        return value === '' ? 'NULL' : value;
-      } else {
-        // Escape single quotes for string values
-        return `'${value.replace(/'/g, "''")}'`;
-      }
-    }).join(', ')})`;
-  }).join(',\n');
-  
-  sql += ';';
+  // Add INSERT statements only if updateSchemaOnly is false or undefined
+  if (!config.updateSchemaOnly) {
+    sql += `INSERT INTO ${tableName} (${activeColumns.map(col => col.name).join(', ')})\nVALUES\n`;
+    
+    // Add data rows
+    sql += data.map(row => {
+      return `(${activeColumns.map(col => {
+        const value = row[col.name] || '';
+        
+        // Handle different data types
+        if (['Int', 'Float', 'Bool'].includes(col.dataType)) {
+          return value === '' ? 'NULL' : value;
+        } else {
+          // Escape single quotes for string values
+          return `'${value.replace(/'/g, "''")}'`;
+        }
+      }).join(', ')})`;
+    }).join(',\n');
+    
+    sql += ';';
+  }
   
   return sql;
 };
