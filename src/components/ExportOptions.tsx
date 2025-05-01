@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-import { FileDown, Database, RotateCcw, ChevronDown } from 'lucide-react';
+import { FileDown, Database, RotateCcw, Check } from 'lucide-react';
 import { ExportFormat, FileData, ColumnInfo, MaskingConfig } from '@/types';
 import { downloadFile, exportData } from '@/utils/exportUtils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -10,14 +10,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Form, FormField, FormItem, FormLabel, FormControl } from '@/components/ui/form';
-import { useForm } from 'react-hook-form';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-  DropdownMenuItem,
-} from "@/components/ui/dropdown-menu";
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 interface ExportOptionsProps {
   fileData: FileData;
@@ -37,22 +32,13 @@ const ExportOptions = ({ fileData, columns, maskedData, maskingConfig, onReset }
   const [exportFormat, setExportFormat] = useState<ExportFormat>('CSV');
   const [isExporting, setIsExporting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [showSqlOptions, setShowSqlOptions] = useState(false);
   const [sqlOptions, setSqlOptions] = useState<SqlOptions>({
     createTableSQL: maskingConfig.createTableSQL || true,
     updateSchemaOnly: false,
     tableName: maskingConfig.tableName || 'masked_data'
   });
-  const rowsPerPage = 25; // Increased from 10 to 25
+  const rowsPerPage = 25;
 
-  const form = useForm({
-    defaultValues: {
-      createTableSQL: sqlOptions.createTableSQL,
-      updateSchemaOnly: sqlOptions.updateSchemaOnly,
-      tableName: sqlOptions.tableName,
-    }
-  });
-  
   const handleExport = (format: ExportFormat) => {
     setExportFormat(format);
     setIsExporting(true);
@@ -100,12 +86,6 @@ const ExportOptions = ({ fileData, columns, maskedData, maskingConfig, onReset }
       onReset();
       toast.success('Data has been reset successfully');
     }
-  };
-
-  // Handle selecting an export format
-  const handleFormatSelect = (format: ExportFormat) => {
-    setExportFormat(format);
-    setShowSqlOptions(format === 'SQL');
   };
 
   // Handle SQL options change
@@ -233,7 +213,7 @@ const ExportOptions = ({ fileData, columns, maskedData, maskingConfig, onReset }
                 key={format}
                 variant={exportFormat === format ? "default" : "outline"}
                 className={exportFormat === format ? "bg-masking-secondary hover:bg-masking-primary" : ""}
-                onClick={() => handleFormatSelect(format)}
+                onClick={() => setExportFormat(format)}
               >
                 <FileDown className="mr-2 h-4 w-4" />
                 {format}
@@ -241,53 +221,39 @@ const ExportOptions = ({ fileData, columns, maskedData, maskingConfig, onReset }
             ))}
           </div>
 
-          {/* SQL-specific options */}
-          {showSqlOptions && (
+          {/* SQL-specific options - only shown when SQL is selected */}
+          {exportFormat === 'SQL' && (
             <div className="p-4 border rounded-md mt-4 bg-gray-50">
               <h4 className="font-medium mb-3">SQL Export Options</h4>
               <div className="space-y-4">
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="createTableSQL" 
-                    checked={sqlOptions.createTableSQL}
-                    onCheckedChange={(checked) => 
-                      handleSqlOptionChange('createTableSQL', checked === true)
-                    }
-                  />
-                  <label 
-                    htmlFor="createTableSQL" 
-                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                  >
-                    Include CREATE TABLE statement
-                  </label>
-                </div>
-                
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="updateSchemaOnly" 
-                    checked={sqlOptions.updateSchemaOnly}
-                    onCheckedChange={(checked) => 
-                      handleSqlOptionChange('updateSchemaOnly', checked === true)
-                    }
-                  />
-                  <label 
-                    htmlFor="updateSchemaOnly" 
-                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                  >
-                    Update schema only (no data)
-                  </label>
-                </div>
-                
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <label htmlFor="tableName" className="text-sm font-medium">
-                    Table Name:
-                  </label>
-                  <input
-                    id="tableName"
-                    value={sqlOptions.tableName}
-                    onChange={(e) => handleSqlOptionChange('tableName', e.target.value)}
-                    className="col-span-3 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="tableName">Table Name</Label>
+                    <Input
+                      id="tableName"
+                      value={sqlOptions.tableName}
+                      onChange={(e) => handleSqlOptionChange('tableName', e.target.value)}
+                      className="w-full"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Export Type</Label>
+                    <RadioGroup 
+                      value={sqlOptions.createTableSQL ? "create" : "update"} 
+                      onValueChange={(value) => handleSqlOptionChange('createTableSQL', value === "create")}
+                      className="grid gap-2 mt-2"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="create" id="create-table" />
+                        <Label htmlFor="create-table" className="cursor-pointer">Include CREATE TABLE</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="update" id="update-only" />
+                        <Label htmlFor="update-only" className="cursor-pointer">Update Data Schema Only</Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
                 </div>
               </div>
             </div>

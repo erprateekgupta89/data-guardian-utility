@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
 
@@ -139,50 +138,16 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="tableName">SQL Table Name</Label>
-            <Input
-              id="tableName"
-              value={tableName}
-              onChange={(e) => setTableName(e.target.value)}
-              placeholder="Enter table name for SQL export"
-              disabled={isProcessing}
-            />
-          </div>
-          
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="preserveFormat" className="cursor-pointer">
-                Preserve Data Format
-              </Label>
-              <Switch
-                id="preserveFormat"
-                checked={preserveFormat}
-                onCheckedChange={setPreserveFormat}
-                disabled={isProcessing}
-              />
-            </div>
-            
-            <div className="space-y-2 mt-4">
-              <Label className="text-sm font-medium">SQL Export Options</Label>
-              <RadioGroup 
-                value={createTableSQL ? "create" : "update"} 
-                onValueChange={(value) => setCreateTableSQL(value === "create")}
-                className="grid gap-2 mt-2"
-                disabled={isProcessing}
-              >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="create" id="create-table" />
-                  <Label htmlFor="create-table" className="cursor-pointer">Include CREATE TABLE</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="update" id="update-only" />
-                  <Label htmlFor="update-only" className="cursor-pointer">Update Data Schema Only</Label>
-                </div>
-              </RadioGroup>
-            </div>
-          </div>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="preserveFormat" className="cursor-pointer">
+            Preserve Data Format
+          </Label>
+          <Switch
+            id="preserveFormat"
+            checked={preserveFormat}
+            onCheckedChange={setPreserveFormat}
+            disabled={isProcessing}
+          />
         </div>
         
         {isProcessing && (
