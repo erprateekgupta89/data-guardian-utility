@@ -52,44 +52,6 @@ export const maskData = (value: string, dataType: DataType, format?: string, con
       
       return maskedValue;
     }
-
-    case 'Credit card number': {
-      const digitsOnly = value.replace(/\D/g, '');
-      const format = value.replace(/\d/g, '#');
-      
-      let randomDigits = '';
-      for (let i = 0; i < digitsOnly.length - 1; i++) {
-        randomDigits += randomNumber(0, 9);
-      }
-      
-      let sum = 0;
-      let double = false;
-      for (let i = randomDigits.length - 1; i >= 0; i--) {
-        let digit = parseInt(randomDigits[i]);
-        if (double) {
-          digit *= 2;
-          if (digit > 9) digit -= 9;
-        }
-        sum += digit;
-        double = !double;
-      }
-      
-      const checkDigit = (10 - (sum % 10)) % 10;
-      randomDigits += checkDigit;
-      
-      let maskedValue = '';
-      let digitIndex = 0;
-      
-      for (let i = 0; i < format.length; i++) {
-        if (format[i] === '#') {
-          maskedValue += randomDigits[digitIndex++] || randomNumber(0, 9);
-        } else {
-          maskedValue += format[i];
-        }
-      }
-      
-      return maskedValue;
-    }
     
     case 'Name':
     case 'First Name':
@@ -108,8 +70,7 @@ export const maskData = (value: string, dataType: DataType, format?: string, con
     case 'Date Time':
       return maskDateTime(value, dataType);
     
-    case 'Postal Code':
-    case 'Zipcode': {
+    case 'Postal Code': {
       if (/^\d{5}(-\d{4})?$/.test(value)) {
         if (value.includes('-')) {
           return `${randomNumber(10000, 99999)}-${randomNumber(1000, 9999)}`;
@@ -123,25 +84,6 @@ export const maskData = (value: string, dataType: DataType, format?: string, con
         .fill(0)
         .map(() => randomNumber(0, 9))
         .join('');
-    }
-    
-    case 'Currency': {
-      const currencySymbol = value.match(/[$€£¥₹]/)?.[0] || '';
-      const amount = parseFloat(value.replace(/[$€£¥₹,]/g, ''));
-      const maskedAmount = randomNumber(
-        Math.floor(amount * 0.5),
-        Math.ceil(amount * 1.5)
-      );
-      
-      if (currencySymbol) {
-        if (value.startsWith(currencySymbol)) {
-          return `${currencySymbol}${maskedAmount.toLocaleString()}`;
-        } else {
-          return `${maskedAmount.toLocaleString()}${currencySymbol}`;
-        }
-      }
-      
-      return maskedAmount.toLocaleString();
     }
     
     case 'Int': {
@@ -175,25 +117,8 @@ export const maskData = (value: string, dataType: DataType, format?: string, con
       return companies[Math.floor(Math.random() * companies.length)];
     }
     
-    case 'Job': {
-      const jobs = [
-        'Software Engineer', 'Project Manager', 'Marketing Specialist', 
-        'Data Analyst', 'HR Manager', 'Financial Advisor', 'Product Designer',
-        'Sales Representative', 'Content Writer', 'Customer Support'
-      ];
-      return jobs[Math.floor(Math.random() * jobs.length)];
-    }
-    
     case 'Password':
       return '*'.repeat(value.length);
-    
-    case 'Timezone': {
-      const timezones = [
-        'UTC+0', 'UTC-5', 'UTC+1', 'UTC+5:30', 'UTC-8', 'UTC+8', 'UTC+9', 'UTC+10',
-        'UTC-3', 'UTC+3'
-      ];
-      return timezones[Math.floor(Math.random() * timezones.length)];
-    }
     
     case 'Text':
     case 'String':
@@ -232,7 +157,7 @@ export const maskDataSet = (
     
     columns.forEach(column => {
       if (column.skip) {
-        // If skip is true, preserve the original data without masking
+        // If skip is true, preserve the original data without any masking
         maskedRow[column.name] = row[column.name];
       } else {
         // Pass constant values if they exist for this column

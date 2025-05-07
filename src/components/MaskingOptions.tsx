@@ -103,7 +103,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
         
         <div className="pt-2">
           <Button 
-            className="w-full bg-masking-secondary hover:bg-masking-primary text-white py-1"
+            className="bg-masking-secondary hover:bg-masking-primary text-white py-1 w-auto max-w-[200px]"
             onClick={handleApplyMasking}
             disabled={isProcessing}
             size="sm"
