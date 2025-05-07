@@ -1,5 +1,6 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import FileUpload from '@/components/FileUpload';
 import DataPreview from '@/components/DataPreview';
 import MaskingOptions from '@/components/MaskingOptions';
@@ -19,6 +20,19 @@ const Index = () => {
     tableName: 'masked_data'
   });
   const [activeStep, setActiveStep] = useState<'upload' | 'preview' | 'result' | 'export'>('upload');
+  const location = useLocation();
+
+  // Check if there's file data in the location state (from export page upload)
+  useEffect(() => {
+    const state = location.state as { fileData?: FileData } | null;
+    if (state && state.fileData) {
+      setFileData(state.fileData);
+      setColumns(state.fileData.columns);
+      setActiveStep('preview');
+      // Clear the location state to avoid reloading the same file
+      window.history.replaceState({}, document.title);
+    }
+  }, [location]);
 
   // Handle file upload
   const handleFileLoaded = (data: FileData) => {
