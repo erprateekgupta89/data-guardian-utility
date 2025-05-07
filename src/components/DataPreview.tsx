@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Table, Info } from 'lucide-react';
 import { ColumnInfo, DataType, FileData } from '@/types';
@@ -76,7 +77,7 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
   const getDataTypeBadgeColor = (dataType: DataType) => {
     if (dataType === 'Unknown') return 'bg-gray-200 text-gray-800';
     
-    const sensitiveTypes = ['Credit card number', 'Email', 'Phone Number', 'Name', 'Address'];
+    const sensitiveTypes = ['Email', 'Phone Number', 'Name', 'Address'];
     if (sensitiveTypes.includes(dataType)) return 'bg-amber-100 text-amber-800';
     
     return 'bg-emerald-100 text-emerald-800';
@@ -88,7 +89,7 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
         <CardTitle className="text-lg font-medium">
           <div className="flex items-center">
             <Table className="w-5 h-5 mr-2" />
-            Data Preview
+            Exported Column Names
           </div>
         </CardTitle>
         <div className="flex items-center space-x-2">
@@ -150,6 +151,22 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
                           >
                             Auto-detected
                           </Badge>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div>
+                                  <Info className="h-4 w-4 text-gray-400" />
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p className="text-xs">
+                                  {column.dataType === 'Unknown' 
+                                    ? "Data type could not be automatically determined" 
+                                    : `Detected ${column.dataType} format based on content pattern`}
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </div>
                         <Select
                           value={column.dataType !== 'Unknown' ? column.dataType : ''}

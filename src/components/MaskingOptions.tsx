@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-import { Check } from 'lucide-react';
+import { Check, Info } from 'lucide-react';
 import { ColumnInfo, FileData, MaskingConfig } from '@/types';
 import { maskDataSet } from '@/utils/masking';
 import { maskDataWithAI } from '@/utils/aiMasking';
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface MaskingOptionsProps {
   fileData: FileData;
@@ -90,9 +91,23 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
       <CardContent className="space-y-4">
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <Label htmlFor="preserveFormat" className="cursor-pointer">
-              Preserve Data Format
-            </Label>
+            <div className="flex items-center space-x-2">
+              <Label htmlFor="preserveFormat" className="cursor-pointer">
+                Preserve Data Format
+              </Label>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div>
+                      <Info className="h-4 w-4 text-gray-400" />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p>When enabled, masking will maintain the original format of data (e.g., keeping the same number of characters, preserving special characters). Disable for fully randomized data.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
             <Switch
               id="preserveFormat"
               checked={preserveFormat}
@@ -101,7 +116,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
           </div>
         </div>
         
-        <div className="pt-2">
+        <div className="pt-2 flex justify-center">
           <Button 
             className="bg-masking-secondary hover:bg-masking-primary text-white py-1 w-auto max-w-[200px]"
             onClick={handleApplyMasking}
