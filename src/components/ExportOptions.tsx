@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { useNavigate } from 'react-router-dom';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface ExportOptionsProps {
   fileData: FileData;
@@ -36,10 +37,14 @@ const ExportOptions = ({
   const [exportFormat, setExportFormat] = useState<ExportFormat>('CSV');
   const [isExporting, setIsExporting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
   const [tableName, setTableName] = useState(maskingConfig.tableName || 'masked_data');
   const [createTableSQL, setCreateTableSQL] = useState(maskingConfig.createTableSQL);
-  const rowsPerPage = 25;
   const navigate = useNavigate();
+  
+  const totalPages = Math.ceil(maskedData.length / rowsPerPage);
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const paginatedRows = maskedData.slice(startIndex, startIndex + rowsPerPage);
   
   const handleExport = (format: ExportFormat) => {
     setExportFormat(format);
@@ -76,21 +81,15 @@ const ExportOptions = ({
     }
   };
   
-  // Show a preview of the masked data with pagination
-  const filteredColumns = columns.filter(col => !col.skip);
-  const totalPages = Math.ceil(maskedData.length / rowsPerPage);
-  const startIndex = (currentPage - 1) * rowsPerPage;
-  const paginatedRows = maskedData.slice(startIndex, startIndex + rowsPerPage);
+  const handleUploadNew = () => {
+    navigate('/');
+  };
 
   const handleReset = () => {
     if (window.confirm('Are you sure you want to reset? This will clear all current data.')) {
       onReset();
       toast.success('Data has been reset successfully');
     }
-  };
-
-  const handleUploadNew = () => {
-    navigate('/');
   };
 
   const cardTitle = displayExportControls ? "Export Data" : "Result Preview";
@@ -127,13 +126,38 @@ const ExportOptions = ({
         {/* Display data table only on the Result page, not on the Export page */}
         {!displayExportControls && (
           <>
+            <div className="flex justify-between items-center mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">Records per page:</span>
+                <Select
+                  value={String(rowsPerPage)}
+                  onValueChange={(value) => {
+                    setRowsPerPage(Number(value));
+                    setCurrentPage(1); // Reset to first page when changing rows per page
+                  }}
+                >
+                  <SelectTrigger className="w-[80px]">
+                    <SelectValue placeholder="25" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="25">25</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Showing {startIndex + 1} to {Math.min(startIndex + rowsPerPage, maskedData.length)} of {maskedData.length} records
+              </div>
+            </div>
             <div className="rounded-md border">
               <ScrollArea className="h-[400px]">
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader className="bg-gray-50 sticky top-0">
                       <TableRow>
-                        {filteredColumns.map(column => (
+                        {columns.filter(col => !col.skip).map(column => (
                           <TableHead key={column.id} className="min-w-[150px]">{column.name}</TableHead>
                         ))}
                       </TableRow>
@@ -141,7 +165,7 @@ const ExportOptions = ({
                     <TableBody>
                       {paginatedRows.map((row, idx) => (
                         <TableRow key={idx}>
-                          {filteredColumns.map(column => (
+                          {columns.filter(col => !col.skip).map(column => (
                             <TableCell key={column.id} className="min-w-[150px] whitespace-nowrap">
                               {row[column.name]}
                             </TableCell>
