@@ -73,7 +73,7 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
     onColumnsUpdate(updatedColumns);
   };
 
-  // Helper function to determine badge color based on data type
+  // Helper function to determine badge color and get tooltip text based on data type
   const getDataTypeBadgeColor = (dataType: DataType) => {
     if (dataType === 'Unknown') return 'bg-gray-200 text-gray-800';
     
@@ -82,6 +82,20 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
     
     return 'bg-emerald-100 text-emerald-800';
   };
+  
+  // Helper function to get tooltip content based on badge color
+  const getTooltipContent = (dataType: DataType) => {
+    if (dataType === 'Unknown') {
+      return "Data type could not be automatically determined";
+    }
+    
+    const sensitiveTypes = ['Email', 'Phone Number', 'Name', 'Address'];
+    if (sensitiveTypes.includes(dataType)) {
+      return `Detection uncertain: Please review and confirm if "${dataType}" is the correct type for this data`;
+    }
+    
+    return `Detected ${dataType} format based on content pattern`;
+  };
 
   return (
     <Card className="w-full">
@@ -89,7 +103,7 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
         <CardTitle className="text-lg font-medium">
           <div className="flex items-center">
             <Table className="w-5 h-5 mr-2" />
-            Exported Column Names
+            Data Preview
           </div>
         </CardTitle>
         <div className="flex items-center space-x-2">
@@ -116,8 +130,8 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
             <UITable>
               <TableHeader className="bg-gray-100 sticky top-0">
                 <TableRow>
-                  <TableHead className="w-[250px]">Column Name</TableHead>
-                  <TableHead className="w-[200px]">Data Type</TableHead>
+                  <TableHead className="w-[250px]">Exported Column Name</TableHead>
+                  <TableHead className="w-[200px]">Expected Field Type</TableHead>
                   <TableHead className="w-[100px] text-center">Skip Masking</TableHead>
                 </TableRow>
               </TableHeader>
@@ -160,9 +174,7 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
                               </TooltipTrigger>
                               <TooltipContent>
                                 <p className="text-xs">
-                                  {column.dataType === 'Unknown' 
-                                    ? "Data type could not be automatically determined" 
-                                    : `Detected ${column.dataType} format based on content pattern`}
+                                  {getTooltipContent(column.dataType)}
                                 </p>
                               </TooltipContent>
                             </Tooltip>
