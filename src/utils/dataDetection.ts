@@ -59,8 +59,8 @@ export const detectDataType = (value: string): DataType => {
   // Phone Number (basic detection)
   if (regexPatterns.phoneNumber.test(strValue) && !strValue.includes('-')) return 'Phone Number';
   
-  // Credit Card
-  if (regexPatterns.creditCard.test(strValue) && passesLuhnCheck(strValue)) return 'Credit card number';
+  // Credit Card - changed to String to match DataType
+  if (regexPatterns.creditCard.test(strValue) && passesLuhnCheck(strValue)) return 'String';
   
   // URL detection
   if (regexPatterns.url.test(strValue)) return 'String';
@@ -87,8 +87,8 @@ export const detectDataType = (value: string): DataType => {
   // IP Address
   if (regexPatterns.ipv4.test(strValue)) return 'String';
   
-  // Currency
-  if (regexPatterns.currency.test(strValue)) return 'Currency';
+  // Currency - changed to Float to match DataType
+  if (regexPatterns.currency.test(strValue)) return 'Float';
 
   // Boolean
   if (regexPatterns.bool.test(strValue)) return 'Bool';
@@ -146,12 +146,12 @@ export const inferTypeFromColumnName = (columnName: string): DataType | null => 
   if (/datetime|timestamp/.test(name)) return 'Date Time';
   
   // Financial patterns
-  if (/credit.?card|card.?number|cc.?number|ccnum|payment.?card/.test(name)) return 'Credit card number';
-  if (/price|cost|amount|salary|income|pay|fee|charge|money|dollar|euro|rupee|pound|yen/.test(name)) return 'Currency';
+  if (/credit.?card|card.?number|cc.?number|ccnum|payment.?card/.test(name)) return 'String';
+  if (/price|cost|amount|salary|income|pay|fee|charge|money|dollar|euro|rupee|pound|yen/.test(name)) return 'Float';
   
   // Organization patterns
   if (/company|organization|business|employer|corp|firm/.test(name)) return 'Company';
-  if (/job|position|title|role|occupation|designation/.test(name)) return 'Job';
+  if (/job|position|title|role|occupation|designation/.test(name)) return 'String';
   
   // Boolean patterns
   if (/active|enabled|status|flag|is.?|has.?|should.?|can.?|allow|approve/.test(name)) return 'Bool';
@@ -162,9 +162,9 @@ export const inferTypeFromColumnName = (columnName: string): DataType | null => 
   
   // Other common patterns
   if (/password|pwd|pass/.test(name)) return 'Password';
-  if (/agent|browser|useragent/.test(name)) return 'User agent';
+  if (/agent|browser|useragent/.test(name)) return 'String';
   if (/year|yyyy/.test(name)) return 'Year';
-  if (/timezone|tz/.test(name)) return 'Timezone';
+  if (/timezone|tz/.test(name)) return 'String';
   if (/comment|description|notes|details|text|content|message|feedback|info|about/.test(name)) return 'Text';
   if (/id$|_id|^id_|uuid|guid/.test(name)) return 'String';
   
@@ -190,12 +190,10 @@ export const detectColumnDataType = (samples: string[], columnName: string = '')
           return regexPatterns.date1.test(sample) || 
                  regexPatterns.date2.test(sample) || 
                  regexPatterns.date3.test(sample);
-        case 'Currency':
+        case 'Float':
           return regexPatterns.currency.test(sample) || /^[\d,.]+$/.test(sample);
         case 'Int':
           return regexPatterns.int.test(sample);
-        case 'Float':
-          return regexPatterns.float.test(sample);
         case 'Bool':
           return regexPatterns.bool.test(sample);
         default:
@@ -220,18 +218,16 @@ export const detectColumnDataType = (samples: string[], columnName: string = '')
   const typeConfidence: Record<DataType, number> = {} as Record<DataType, number>;
   
   // Priority weights for different data types
-  const typePriority = {
+  const typePriority: Record<string, number> = {
     'Email': 1.5,
-    'Credit card number': 1.5,
     'Phone Number': 1.3,
     'Date': 1.3,
     'Date of birth': 1.3,
     'Date Time': 1.3,
-    'Currency': 1.2,
+    'Float': 0.8,
     'Name': 1.2,
     'Address': 1.2,
     'Int': 0.7,
-    'Float': 0.8,
     'String': 0.5
   };
   
@@ -240,7 +236,7 @@ export const detectColumnDataType = (samples: string[], columnName: string = '')
     typeCounts[type] = (typeCounts[type] || 0) + 1;
     
     // Apply priority weights
-    const priority = (typePriority as any)[type] || 1.0;
+    const priority = typePriority[type] || 1.0;
     typeConfidence[type] = (typeConfidence[type] || 0) + priority;
   });
   
@@ -261,7 +257,7 @@ export const detectColumnDataType = (samples: string[], columnName: string = '')
   // If the confidence is low, fall back to more general types based on data pattern
   if (typePercentage < 0.6 || mostConfidentType === 'Unknown') {
     // Check if numeric values are predominant
-    const numericTypes = ['Int', 'Float', 'Currency'];
+    const numericTypes = ['Int', 'Float'];
     const totalNumeric = numericTypes.reduce((sum, type) => sum + (typeCounts[type as DataType] || 0), 0);
     
     if (totalNumeric / validSamples.length > 0.7) {
