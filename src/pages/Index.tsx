@@ -55,7 +55,7 @@ const Index = () => {
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
-                Data Masking Application
+                Data Masker
               </h1>
               <p className="text-sm text-gray-500 mt-1">
                 Securely mask sensitive data in your files
@@ -182,7 +182,7 @@ const Index = () => {
       <footer className="bg-white border-t mt-12">
         <div className="max-w-full mx-auto px-4 sm:px-6 py-4">
           <p className="text-center text-gray-500 text-sm">
-            Data Masking Application
+            Data Masker
           </p>
         </div>
       </footer>
