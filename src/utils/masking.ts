@@ -138,8 +138,8 @@ export const maskDataSet = (
   data: Record<string, string>[],
   columns: ColumnInfo[]
 ): Record<string, string>[] => {
-  // If data has more than 1000 rows, take a random sample of 100 rows
-  const workingData = data.length > 1000 ? getRandomSample(data, 100) : data;
+  // Use all the data instead of just a sample
+  const workingData = data;
   
   // Get unique values for each column
   const columnUniqueValues: Record<string, string[]> = {};
