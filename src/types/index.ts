@@ -16,19 +16,13 @@ export type DataType =
   | 'Time'
   | 'Date Time'
   | 'City'
-  | 'Currency'
   | 'State'
-  | 'Zipcode'
-  | 'Credit card number'
-  | 'User agent'
   | 'Postal Code'
   | 'Year'
   | 'Company'
   | 'Date of birth'
-  | 'Job'
   | 'Text'
   | 'Password'
-  | 'Timezone'
   | 'Unknown';
 
 export interface ColumnInfo {

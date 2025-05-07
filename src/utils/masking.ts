@@ -1,3 +1,4 @@
+
 import { ColumnInfo, DataType } from "@/types";
 import { randomString, randomNumber, getUniqueValues, getRandomSample } from "./maskingHelpers";
 import { maskPersonalInfo, maskLocationData, maskDateTime } from "./dataTypeMasking";
@@ -231,6 +232,7 @@ export const maskDataSet = (
     
     columns.forEach(column => {
       if (column.skip) {
+        // If skip is true, preserve the original data without masking
         maskedRow[column.name] = row[column.name];
       } else {
         // Pass constant values if they exist for this column

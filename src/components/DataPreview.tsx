@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Table, Info } from 'lucide-react';
 import { ColumnInfo, DataType, FileData } from '@/types';
@@ -21,8 +20,6 @@ const DATA_TYPES: DataType[] = [
   'City',
   'Company',
   'Country',
-  'Credit card number',
-  'Currency',
   'Date',
   'Date Time',
   'Date of birth',
@@ -31,7 +28,6 @@ const DATA_TYPES: DataType[] = [
   'Float',
   'Gender',
   'Int',
-  'Job',
   'Last Name',
   'Name',
   'Password',
@@ -41,10 +37,7 @@ const DATA_TYPES: DataType[] = [
   'String',
   'Text',
   'Time',
-  'Timezone',
-  'User agent',
   'Year',
-  'Zipcode',
 ];
 
 const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {

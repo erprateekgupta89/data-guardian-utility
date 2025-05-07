@@ -7,6 +7,7 @@ import ExportOptions from '@/components/ExportOptions';
 import SettingsButton from '@/components/SettingsButton';
 import { FileData, ColumnInfo, MaskingConfig } from '@/types';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
 
 const Index = () => {
   const [fileData, setFileData] = useState<FileData | null>(null);
@@ -17,7 +18,7 @@ const Index = () => {
     createTableSQL: true,
     tableName: 'masked_data'
   });
-  const [activeStep, setActiveStep] = useState<'upload' | 'preview' | 'export'>('upload');
+  const [activeStep, setActiveStep] = useState<'upload' | 'preview' | 'result' | 'export'>('upload');
 
   // Handle file upload
   const handleFileLoaded = (data: FileData) => {
@@ -35,7 +36,7 @@ const Index = () => {
   const handleDataMasked = (data: Record<string, string>[], config: MaskingConfig) => {
     setMaskedData(data);
     setMaskingConfig(config);
-    setActiveStep('export');
+    setActiveStep('result');
   };
 
   // Handle reset
@@ -87,11 +88,18 @@ const Index = () => {
               Preview & Configure
             </TabsTrigger>
             <TabsTrigger
+              value="result"
+              className="h-12 px-8 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+              disabled={!maskedData.length}
+            >
+              Result
+            </TabsTrigger>
+            <TabsTrigger
               value="export"
               className="h-12 px-8 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
               disabled={!maskedData.length}
             >
-              Result & Export
+              Export
             </TabsTrigger>
           </TabsList>
 
@@ -126,6 +134,32 @@ const Index = () => {
               </div>
             </TabsContent>
 
+            <TabsContent value="result" className="mt-0">
+              <div className="bg-white p-6 rounded-lg shadow-sm border">
+                {maskedData.length > 0 && (
+                  <>
+                    <ExportOptions 
+                      fileData={fileData!} 
+                      columns={columns}
+                      maskedData={maskedData}
+                      maskingConfig={maskingConfig}
+                      onReset={handleReset}
+                      displayExportControls={false}
+                      onNext={() => setActiveStep('export')}
+                    />
+                    <div className="flex justify-end mt-4">
+                      <Button 
+                        onClick={() => setActiveStep('export')} 
+                        className="bg-primary"
+                      >
+                        Proceed to Export
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </TabsContent>
+
             <TabsContent value="export" className="mt-0">
               <div className="bg-white p-6 rounded-lg shadow-sm border">
                 {maskedData.length > 0 && (
@@ -135,6 +169,7 @@ const Index = () => {
                     maskedData={maskedData}
                     maskingConfig={maskingConfig}
                     onReset={handleReset}
+                    displayExportControls={true}
                   />
                 )}
               </div>

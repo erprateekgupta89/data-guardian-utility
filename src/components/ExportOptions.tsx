@@ -19,9 +19,19 @@ interface ExportOptionsProps {
   maskedData: Record<string, string>[];
   maskingConfig: MaskingConfig;
   onReset: () => void;
+  displayExportControls?: boolean;
+  onNext?: () => void;
 }
 
-const ExportOptions = ({ fileData, columns, maskedData, maskingConfig, onReset }: ExportOptionsProps) => {
+const ExportOptions = ({ 
+  fileData, 
+  columns, 
+  maskedData, 
+  maskingConfig, 
+  onReset, 
+  displayExportControls = true,
+  onNext 
+}: ExportOptionsProps) => {
   const [exportFormat, setExportFormat] = useState<ExportFormat>('CSV');
   const [isExporting, setIsExporting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -77,6 +87,8 @@ const ExportOptions = ({ fileData, columns, maskedData, maskingConfig, onReset }
     }
   };
 
+  const cardTitle = displayExportControls ? "Export Data" : "Result Preview";
+
   return (
     <Card className="w-full">
       <CardHeader>
@@ -84,20 +96,25 @@ const ExportOptions = ({ fileData, columns, maskedData, maskingConfig, onReset }
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <Database className="w-5 h-5 mr-2" /> 
-              Masked Data Preview & Export
+              {cardTitle}
             </div>
-            <Button
-              variant="outline"
-              onClick={handleReset}
-              className="flex items-center gap-2"
-            >
-              <RotateCcw className="w-4 h-4" />
-              Reset Data
-            </Button>
+            {displayExportControls && (
+              <Button
+                variant="outline"
+                onClick={handleReset}
+                className="flex items-center gap-2"
+              >
+                <RotateCcw className="w-4 h-4" />
+                Reset Data
+              </Button>
+            )}
           </div>
         </CardTitle>
         <CardDescription>
-          Preview of masked data. Export in your preferred format.
+          {displayExportControls 
+            ? "Preview of masked data. Export in your preferred format."
+            : "Review your masked data before proceeding to export."
+          }
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -183,76 +200,80 @@ const ExportOptions = ({ fileData, columns, maskedData, maskingConfig, onReset }
           </div>
         )}
         
-        <div>
-          <h3 className="font-medium text-sm mb-3">Export Format</h3>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            {(['CSV', 'Excel', 'JSON', 'SQL', 'XML'] as ExportFormat[]).map((format) => (
-              <Button
-                key={format}
-                variant="outline"
-                className={`${exportFormat === format ? "bg-masking-secondary text-white hover:bg-masking-primary" : ""}`}
-                onClick={() => setExportFormat(format)}
-                disabled={isExporting}
-              >
-                <FileDown className="mr-2 h-4 w-4" />
-                {format}
-              </Button>
-            ))}
-          </div>
-        </div>
-        
-        {/* SQL-specific options only shown when SQL is selected */}
-        {exportFormat === 'SQL' && (
-          <div className="space-y-4 p-4 border rounded-md bg-gray-50">
-            <div className="space-y-2">
-              <Label htmlFor="tableName">SQL Table Name</Label>
-              <Input
-                id="tableName"
-                value={tableName}
-                onChange={(e) => setTableName(e.target.value)}
-                placeholder="Enter table name for SQL export"
-              />
+        {displayExportControls && (
+          <>
+            <div>
+              <h3 className="font-medium text-sm mb-3">Export Format</h3>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                {(['CSV', 'Excel', 'JSON', 'SQL', 'XML'] as ExportFormat[]).map((format) => (
+                  <Button
+                    key={format}
+                    variant="outline"
+                    className={`${exportFormat === format ? "bg-masking-secondary text-white hover:bg-masking-primary" : ""}`}
+                    onClick={() => setExportFormat(format)}
+                    disabled={isExporting}
+                  >
+                    <FileDown className="mr-2 h-4 w-4" />
+                    {format}
+                  </Button>
+                ))}
+              </div>
             </div>
             
-            <div className="space-y-2 mt-4">
-              <Label className="text-sm font-medium">SQL Export Options</Label>
-              <RadioGroup 
-                value={createTableSQL ? "create" : "update"} 
-                onValueChange={(value) => setCreateTableSQL(value === "create")}
-                className="grid gap-2 mt-2"
-              >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="create" id="create-table" />
-                  <Label htmlFor="create-table" className="cursor-pointer">Include CREATE TABLE</Label>
+            {/* SQL-specific options only shown when SQL is selected */}
+            {exportFormat === 'SQL' && (
+              <div className="space-y-4 p-4 border rounded-md bg-gray-50">
+                <div className="space-y-2">
+                  <Label htmlFor="tableName">SQL Table Name</Label>
+                  <Input
+                    id="tableName"
+                    value={tableName}
+                    onChange={(e) => setTableName(e.target.value)}
+                    placeholder="Enter table name for SQL export"
+                  />
                 </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="update" id="update-only" />
-                  <Label htmlFor="update-only" className="cursor-pointer">Update Data Schema Only</Label>
+                
+                <div className="space-y-2 mt-4">
+                  <Label className="text-sm font-medium">SQL Export Options</Label>
+                  <RadioGroup 
+                    value={createTableSQL ? "create" : "update"} 
+                    onValueChange={(value) => setCreateTableSQL(value === "create")}
+                    className="grid gap-2 mt-2"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="create" id="create-table" />
+                      <Label htmlFor="create-table" className="cursor-pointer">Include CREATE TABLE</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="update" id="update-only" />
+                      <Label htmlFor="update-only" className="cursor-pointer">Update Data Schema Only</Label>
+                    </div>
+                  </RadioGroup>
                 </div>
-              </RadioGroup>
-            </div>
-          </div>
+              </div>
+            )}
+            
+            <Button
+              className="w-full bg-masking-secondary hover:bg-masking-primary text-white"
+              onClick={() => handleExport(exportFormat)}
+              disabled={isExporting}
+            >
+              {isExporting ? (
+                <span className="flex items-center">
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Exporting...
+                </span>
+              ) : (
+                <span className="flex items-center">
+                  <Download className="mr-2 h-4 w-4" /> Export as {exportFormat}
+                </span>
+              )}
+            </Button>
+          </>
         )}
-        
-        <Button
-          className="w-full bg-masking-secondary hover:bg-masking-primary text-white"
-          onClick={() => handleExport(exportFormat)}
-          disabled={isExporting}
-        >
-          {isExporting ? (
-            <span className="flex items-center">
-              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              Exporting...
-            </span>
-          ) : (
-            <span className="flex items-center">
-              <Download className="mr-2 h-4 w-4" /> Export as {exportFormat}
-            </span>
-          )}
-        </Button>
       </CardContent>
     </Card>
   );

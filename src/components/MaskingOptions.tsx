@@ -101,11 +101,12 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
           </div>
         </div>
         
-        <div className="pt-4">
+        <div className="pt-2">
           <Button 
-            className="w-full bg-masking-secondary hover:bg-masking-primary text-white"
+            className="w-full bg-masking-secondary hover:bg-masking-primary text-white py-1"
             onClick={handleApplyMasking}
             disabled={isProcessing}
+            size="sm"
           >
             {isProcessing ? (
               <span className="flex items-center">
