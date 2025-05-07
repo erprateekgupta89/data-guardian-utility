@@ -63,12 +63,12 @@ export default {
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
 				},
-				// DataMasking theme colors
+				// Update DataMasking theme colors to blue palette
 				masking: {
-					primary: '#1e3a8a',
-					secondary: '#0d9488',
-					accent: '#0ea5e9',
-					light: '#f0f9ff'
+					primary: '#1e40af', // deep blue
+					secondary: '#3b82f6', // bright blue
+					accent: '#60a5fa', // light blue
+					light: '#f0f7ff' // very light blue
 				}
 			},
 			borderRadius: {

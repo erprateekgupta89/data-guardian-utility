@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-import { Download, FileDown, Database, RotateCcw } from 'lucide-react';
+import { Download, FileDown, Database, RotateCcw, Upload } from 'lucide-react';
 import { ExportFormat, FileData, ColumnInfo, MaskingConfig } from '@/types';
 import { downloadFile, exportData } from '@/utils/exportUtils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import { useNavigate } from 'react-router-dom';
 
 interface ExportOptionsProps {
   fileData: FileData;
@@ -38,6 +39,7 @@ const ExportOptions = ({
   const [tableName, setTableName] = useState(maskingConfig.tableName || 'masked_data');
   const [createTableSQL, setCreateTableSQL] = useState(maskingConfig.createTableSQL);
   const rowsPerPage = 25;
+  const navigate = useNavigate();
   
   const handleExport = (format: ExportFormat) => {
     setExportFormat(format);
@@ -85,6 +87,10 @@ const ExportOptions = ({
       onReset();
       toast.success('Data has been reset successfully');
     }
+  };
+
+  const handleUploadNew = () => {
+    navigate('/');
   };
 
   const cardTitle = displayExportControls ? "Export Data" : "Result Preview";
@@ -214,7 +220,7 @@ const ExportOptions = ({
                   <Button
                     key={format}
                     variant="outline"
-                    className={`${exportFormat === format ? "bg-masking-secondary text-white hover:bg-masking-primary" : ""}`}
+                    className={`${exportFormat === format ? "bg-blue-500 text-white hover:bg-blue-600" : ""}`}
                     onClick={() => setExportFormat(format)}
                     disabled={isExporting}
                   >
@@ -261,15 +267,15 @@ const ExportOptions = ({
             <div className="flex justify-between items-center">
               <Button
                 variant="outline"
-                onClick={handleReset}
+                onClick={handleUploadNew}
                 className="flex items-center gap-2"
               >
-                <RotateCcw className="w-4 h-4" />
-                Reset Data
+                <Upload className="w-4 h-4" />
+                Upload New File
               </Button>
               
               <Button
-                className="bg-masking-secondary hover:bg-masking-primary text-white"
+                className="bg-blue-500 hover:bg-blue-700 text-white"
                 onClick={() => handleExport(exportFormat)}
                 disabled={isExporting}
               >
