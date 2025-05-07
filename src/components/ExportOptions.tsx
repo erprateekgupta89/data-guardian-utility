@@ -98,7 +98,7 @@ const ExportOptions = ({
               <Database className="w-5 h-5 mr-2" /> 
               {cardTitle}
             </div>
-            {displayExportControls && (
+            {!displayExportControls && (
               <Button
                 variant="outline"
                 onClick={handleReset}
@@ -112,92 +112,97 @@ const ExportOptions = ({
         </CardTitle>
         <CardDescription>
           {displayExportControls 
-            ? "Preview of masked data. Export in your preferred format."
+            ? "Choose your preferred export format."
             : "Review your masked data before proceeding to export."
           }
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="rounded-md border">
-          <ScrollArea className="h-[400px]">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader className="bg-gray-50 sticky top-0">
-                  <TableRow>
-                    {filteredColumns.map(column => (
-                      <TableHead key={column.id} className="min-w-[150px]">{column.name}</TableHead>
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginatedRows.map((row, idx) => (
-                    <TableRow key={idx}>
-                      {filteredColumns.map(column => (
-                        <TableCell key={column.id} className="min-w-[150px] whitespace-nowrap">
-                          {row[column.name]}
-                        </TableCell>
+        {/* Display data table only on the Result page, not on the Export page */}
+        {!displayExportControls && (
+          <>
+            <div className="rounded-md border">
+              <ScrollArea className="h-[400px]">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader className="bg-gray-50 sticky top-0">
+                      <TableRow>
+                        {filteredColumns.map(column => (
+                          <TableHead key={column.id} className="min-w-[150px]">{column.name}</TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedRows.map((row, idx) => (
+                        <TableRow key={idx}>
+                          {filteredColumns.map(column => (
+                            <TableCell key={column.id} className="min-w-[150px] whitespace-nowrap">
+                              {row[column.name]}
+                            </TableCell>
+                          ))}
+                        </TableRow>
                       ))}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                    </TableBody>
+                  </Table>
+                </div>
+              </ScrollArea>
             </div>
-          </ScrollArea>
-        </div>
-        
-        {totalPages > 1 && (
-          <div className="flex justify-center mt-4">
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                    disabled={currentPage === 1}
-                  >
-                    Previous
-                  </Button>
-                </PaginationItem>
-                
-                {Array.from({ length: Math.min(5, totalPages) }).map((_, i) => {
-                  let pageNum: number;
-                  if (totalPages <= 5) {
-                    pageNum = i + 1;
-                  } else if (currentPage <= 3) {
-                    pageNum = i + 1;
-                  } else if (currentPage >= totalPages - 2) {
-                    pageNum = totalPages - 4 + i;
-                  } else {
-                    pageNum = currentPage - 2 + i;
-                  }
-                  
-                  return (
-                    <PaginationItem key={pageNum}>
+            
+            {totalPages > 1 && (
+              <div className="flex justify-center mt-4">
+                <Pagination>
+                  <PaginationContent>
+                    <PaginationItem>
                       <Button
-                        variant={pageNum === currentPage ? "default" : "outline"}
+                        variant="outline"
                         size="sm"
-                        onClick={() => setCurrentPage(pageNum)}
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
                       >
-                        {pageNum}
+                        Previous
                       </Button>
                     </PaginationItem>
-                  );
-                })}
-                
-                <PaginationItem>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                    disabled={currentPage === totalPages}
-                  >
-                    Next
-                  </Button>
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          </div>
+                    
+                    {Array.from({ length: Math.min(5, totalPages) }).map((_, i) => {
+                      let pageNum: number;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = currentPage - 2 + i;
+                      }
+                      
+                      return (
+                        <PaginationItem key={pageNum}>
+                          <Button
+                            variant={pageNum === currentPage ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setCurrentPage(pageNum)}
+                          >
+                            {pageNum}
+                          </Button>
+                        </PaginationItem>
+                      );
+                    })}
+                    
+                    <PaginationItem>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                        disabled={currentPage === totalPages}
+                      >
+                        Next
+                      </Button>
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
+              </div>
+            )}
+          </>
         )}
         
         {displayExportControls && (
@@ -253,25 +258,36 @@ const ExportOptions = ({
               </div>
             )}
             
-            <Button
-              className="w-full bg-masking-secondary hover:bg-masking-primary text-white"
-              onClick={() => handleExport(exportFormat)}
-              disabled={isExporting}
-            >
-              {isExporting ? (
-                <span className="flex items-center">
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Exporting...
-                </span>
-              ) : (
-                <span className="flex items-center">
-                  <Download className="mr-2 h-4 w-4" /> Export as {exportFormat}
-                </span>
-              )}
-            </Button>
+            <div className="flex justify-between items-center">
+              <Button
+                variant="outline"
+                onClick={handleReset}
+                className="flex items-center gap-2"
+              >
+                <RotateCcw className="w-4 h-4" />
+                Reset Data
+              </Button>
+              
+              <Button
+                className="bg-masking-secondary hover:bg-masking-primary text-white"
+                onClick={() => handleExport(exportFormat)}
+                disabled={isExporting}
+              >
+                {isExporting ? (
+                  <span className="flex items-center">
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Exporting...
+                  </span>
+                ) : (
+                  <span className="flex items-center">
+                    <Download className="mr-2 h-4 w-4" /> Export as {exportFormat}
+                  </span>
+                )}
+              </Button>
+            </div>
           </>
         )}
       </CardContent>
