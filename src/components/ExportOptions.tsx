@@ -82,6 +82,7 @@ const ExportOptions = ({
   };
   
   const handleUploadNew = () => {
+    // Navigate to the upload page by setting the activeStep to 'upload' in the parent component
     navigate('/');
   };
 
