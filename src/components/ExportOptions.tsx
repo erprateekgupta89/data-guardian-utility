@@ -1,5 +1,5 @@
 
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { Download, FileDown, Database, RotateCcw, Upload } from 'lucide-react';
 import { ExportFormat, FileData, ColumnInfo, MaskingConfig } from '@/types';
 import { downloadFile, exportData } from '@/utils/exportUtils';
@@ -14,8 +14,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { useNavigate } from 'react-router-dom';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { parseCSV, detectColumnDataType } from '@/utils/dataDetection';
-import { read, utils } from 'xlsx';
 
 interface ExportOptionsProps {
   fileData: FileData;
@@ -42,9 +40,6 @@ const ExportOptions = ({
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [tableName, setTableName] = useState(maskingConfig.tableName || 'masked_data');
   const [createTableSQL, setCreateTableSQL] = useState(maskingConfig.createTableSQL);
-  const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  
   const navigate = useNavigate();
   
   const totalPages = Math.ceil(maskedData.length / rowsPerPage);
@@ -95,98 +90,6 @@ const ExportOptions = ({
     if (window.confirm('Are you sure you want to reset? This will clear all current data.')) {
       onReset();
       toast.success('Data has been reset successfully');
-    }
-  };
-
-  const processExcel = async (file: File): Promise<{ headers: string[], rows: Record<string, string>[] }> => {
-    const arrayBuffer = await file.arrayBuffer();
-    const workbook = read(arrayBuffer);
-    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-    const data = utils.sheet_to_json<any>(firstSheet, { header: 1 });
-    
-    if (data.length < 2) {
-      throw new Error('Excel file is empty or has no data');
-    }
-
-    // Ensure the headers are strings
-    const headers = data[0].map((header: any) => String(header));
-    
-    // Create rows as objects with header keys
-    const rows = data.slice(1).map((row: any) => {
-      const rowData: Record<string, string> = {};
-      headers.forEach((header: string, index: number) => {
-        rowData[header] = row[index] !== undefined ? String(row[index]) : '';
-      });
-      return rowData;
-    });
-
-    return { headers, rows };
-  };
-
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    
-    setIsUploading(true);
-    try {
-      const isCSV = file.name.toLowerCase().endsWith('.csv');
-      const isExcel = file.name.toLowerCase().match(/\.(xlsx|xls)$/);
-
-      if (!isCSV && !isExcel) {
-        toast.error('Only CSV and Excel files are supported');
-        setIsUploading(false);
-        return;
-      }
-
-      let headers: string[];
-      let rows: Record<string, string>[];
-
-      if (isCSV) {
-        const text = await file.text();
-        const result = parseCSV(text);
-        headers = result.headers;
-        rows = result.rows;
-      } else {
-        const result = await processExcel(file);
-        headers = result.headers;
-        rows = result.rows;
-      }
-
-      // Detect column data types
-      const columns = headers.map(header => {
-        const samples = rows.map(row => row[header]).filter(Boolean);
-        const dataType = detectColumnDataType(samples, header);
-        return {
-          id: header.replace(/\s+/g, '_').toLowerCase(),
-          name: header,
-          dataType,
-          sampleData: samples[0] || '',
-          skip: false
-        };
-      });
-
-      const fileData: FileData = {
-        fileName: file.name,
-        fileType: isCSV ? 'csv' : 'excel',
-        columns,
-        data: [...rows],
-        originalData: rows,
-        totalRows: rows.length
-      };
-
-      // Navigate to upload page with new file data
-      navigate('/', { state: { fileData } });
-
-      toast.success(`Successfully loaded ${file.name}`);
-    } catch (error) {
-      console.error('Error processing file:', error);
-      toast.error('Failed to process file. Please check the format and try again.');
-    } finally {
-      setIsUploading(false);
-      // Reset the file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
     }
   };
 
@@ -335,52 +238,6 @@ const ExportOptions = ({
         
         {displayExportControls && (
           <>
-            {/* New Upload File Section */}
-            <div className="mb-6 p-4 border rounded-md bg-gray-50">
-              <h3 className="font-medium text-sm mb-3">Upload New File</h3>
-              <p className="text-sm text-gray-500 mb-4">
-                Upload a new CSV or Excel file to start a new masking process.
-              </p>
-              
-              <div className="flex items-center gap-4">
-                <input 
-                  type="file" 
-                  ref={fileInputRef}
-                  onChange={handleFileChange}
-                  accept=".csv,.xlsx,.xls" 
-                  className="hidden" 
-                  id="file-upload"
-                />
-                
-                <Button
-                  variant="outline"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-2"
-                  disabled={isUploading}
-                >
-                  {isUploading ? (
-                    <span className="flex items-center">
-                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Uploading...
-                    </span>
-                  ) : (
-                    <>
-                      <Upload className="w-4 h-4" />
-                      Select File
-                    </>
-                  )}
-                </Button>
-                
-                <span className="text-sm text-gray-500">
-                  Only CSV and Excel files are supported
-                </span>
-              </div>
-            </div>
-            
-            {/* Export Format Section */}
             <div>
               <h3 className="font-medium text-sm mb-3">Export Format</h3>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
