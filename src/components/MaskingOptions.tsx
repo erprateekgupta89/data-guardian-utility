@@ -10,6 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 interface MaskingOptionsProps {
   fileData: FileData;
@@ -23,6 +24,14 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
   const [preserveFormat, setPreserveFormat] = useState(true);
   const [createTableSQL, setCreateTableSQL] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+  
+  // Check if a country column exists in the data
+  const hasCountryColumn = columns.some(
+    col => col.name.toLowerCase() === 'country'
+  );
+  
+  // Set default use dropdown country preference
+  const [useCountryDropdown, setUseCountryDropdown] = useState(true);
 
   const handleApplyMasking = async () => {
     setIsProcessing(true);
@@ -32,7 +41,8 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
       const maskingConfig: MaskingConfig = {
         preserveFormat,
         createTableSQL,
-        tableName
+        tableName,
+        useCountryDropdown
       };
       
       // Check if AI masking is enabled
@@ -54,7 +64,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
         try {
           const maskedData = useAI 
             ? await maskDataWithAI(fileData, columns)
-            : maskDataSet(fileData.data, columns);
+            : maskDataSet(fileData.data, columns, { useCountryDropdown });
             
           onDataMasked(maskedData, maskingConfig);
         } catch (error) {
@@ -90,6 +100,38 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-4">
+          {/* Country Preference Option */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Label htmlFor="countryPreference" className="cursor-pointer">
+                Use Country Selection from Dropdown
+              </Label>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div>
+                      <Info className="h-4 w-4 text-gray-400" />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p>
+                      {hasCountryColumn 
+                        ? "If enabled, country preference will be applied based on the selected countries in the dropdown. If disabled, it uses the column data." 
+                        : "Country preference will be applied based on the selected countries in the dropdown as no country column is present in the uploaded file."}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+            <Switch
+              id="countryPreference"
+              checked={useCountryDropdown}
+              onCheckedChange={setUseCountryDropdown}
+              disabled={!hasCountryColumn}
+            />
+          </div>
+
+          {/* Preserve Format Option */}
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <Label htmlFor="preserveFormat" className="cursor-pointer">

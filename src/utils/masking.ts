@@ -133,10 +133,16 @@ export const maskData = (value: string, dataType: DataType, format?: string, con
   }
 };
 
+// Interface for masking options
+interface MaskingOptions {
+  useCountryDropdown?: boolean;
+}
+
 // Process and mask all data
 export const maskDataSet = (
   data: Record<string, string>[],
-  columns: ColumnInfo[]
+  columns: ColumnInfo[],
+  options?: MaskingOptions
 ): Record<string, string>[] => {
   // Use all the data instead of just a sample
   const workingData = data;
@@ -159,6 +165,14 @@ export const maskDataSet = (
       if (column.skip) {
         // If skip is true, preserve the original data without any masking
         maskedRow[column.name] = row[column.name];
+      } else if (column.name.toLowerCase() === 'country' && !options?.useCountryDropdown) {
+        // If it's a country column and useCountryDropdown is false, use the original country data
+        maskedRow[column.name] = maskData(
+          row[column.name], 
+          column.dataType,
+          row[column.name], 
+          columnUniqueValues[column.name]
+        );
       } else {
         // Pass constant values if they exist for this column
         const constantValues = columnUniqueValues[column.name];
