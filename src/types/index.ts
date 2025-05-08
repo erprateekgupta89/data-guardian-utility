@@ -49,4 +49,5 @@ export interface MaskingConfig {
   createTableSQL: boolean;
   tableName: string;
   useCountryDropdown?: boolean;
+  selectedCountries?: string[];
 }

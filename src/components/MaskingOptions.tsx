@@ -11,12 +11,44 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue 
+} from "@/components/ui/select";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Check as CheckIcon, ChevronsUpDown } from "lucide-react";
 
 interface MaskingOptionsProps {
   fileData: FileData;
   columns: ColumnInfo[];
   onDataMasked: (maskedData: Record<string, string>[], config: MaskingConfig) => void;
 }
+
+// List of countries for the multi-select dropdown
+const countries = [
+  "United States", "Canada", "United Kingdom", "Australia", "Germany", 
+  "France", "Spain", "Italy", "Japan", "China", "India", "Brazil", 
+  "Mexico", "South Africa", "Russia", "South Korea", "Netherlands", 
+  "Sweden", "Norway", "Denmark", "Finland", "Switzerland", "Austria", 
+  "Belgium", "Portugal", "Greece", "Ireland", "New Zealand", "Singapore", 
+  "Malaysia", "Thailand", "Indonesia", "Philippines", "Vietnam", "Turkey"
+];
 
 const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps) => {
   const { toast } = useToast();
@@ -32,6 +64,12 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
   
   // Set default use dropdown country preference
   const [useCountryDropdown, setUseCountryDropdown] = useState(true);
+  
+  // Selected countries for the multi-select
+  const [selectedCountries, setSelectedCountries] = useState<string[]>([
+    "United States", "United Kingdom", "Canada", "Australia"
+  ]);
+  const [open, setOpen] = useState(false);
 
   const handleApplyMasking = async () => {
     setIsProcessing(true);
@@ -42,7 +80,8 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
         preserveFormat,
         createTableSQL,
         tableName,
-        useCountryDropdown
+        useCountryDropdown,
+        selectedCountries
       };
       
       // Check if AI masking is enabled
@@ -64,7 +103,10 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
         try {
           const maskedData = useAI 
             ? await maskDataWithAI(fileData, columns)
-            : maskDataSet(fileData.data, columns, { useCountryDropdown });
+            : maskDataSet(fileData.data, columns, { 
+                useCountryDropdown, 
+                selectedCountries 
+              });
             
           onDataMasked(maskedData, maskingConfig);
         } catch (error) {
@@ -104,7 +146,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <Label htmlFor="countryPreference" className="cursor-pointer">
-                Use Country Selection from Dropdown
+                Country Selection
               </Label>
               <TooltipProvider>
                 <Tooltip>
@@ -130,6 +172,71 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
               disabled={!hasCountryColumn}
             />
           </div>
+
+          {/* Country Selection Dropdown - Show only if country preference is enabled */}
+          {useCountryDropdown && (
+            <div className="space-y-2">
+              <Label>Select Countries</Label>
+              <Popover open={open} onOpenChange={setOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={open}
+                    className="w-full justify-between"
+                  >
+                    {selectedCountries.length > 0
+                      ? `${selectedCountries.length} countries selected`
+                      : "Select countries..."}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-full p-0" align="start">
+                  <Command className="w-full">
+                    <CommandInput placeholder="Search countries..." />
+                    <CommandEmpty>No country found.</CommandEmpty>
+                    <CommandGroup className="max-h-64 overflow-y-auto">
+                      {countries.map((country) => (
+                        <CommandItem
+                          key={country}
+                          value={country}
+                          onSelect={() => {
+                            setSelectedCountries((prev) =>
+                              prev.includes(country)
+                                ? prev.filter((item) => item !== country)
+                                : [...prev, country]
+                            );
+                          }}
+                        >
+                          <CheckIcon
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              selectedCountries.includes(country)
+                                ? "opacity-100"
+                                : "opacity-0"
+                            )}
+                          />
+                          {country}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+              <div className="flex flex-wrap gap-1 mt-2">
+                {selectedCountries.slice(0, 3).map((country) => (
+                  <Badge key={country} variant="secondary" className="text-xs">
+                    {country}
+                  </Badge>
+                ))}
+                {selectedCountries.length > 3 && (
+                  <Badge variant="secondary" className="text-xs">
+                    +{selectedCountries.length - 3} more
+                  </Badge>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Preserve Format Option */}
           <div className="flex items-center justify-between">
