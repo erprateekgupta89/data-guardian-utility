@@ -136,6 +136,7 @@ export const maskData = (value: string, dataType: DataType, format?: string, con
 // Interface for masking options
 interface MaskingOptions {
   useCountryDropdown?: boolean;
+  selectedCountries?: string[];
 }
 
 // Process and mask all data
@@ -173,6 +174,10 @@ export const maskDataSet = (
           row[column.name], 
           columnUniqueValues[column.name]
         );
+      } else if (column.name.toLowerCase() === 'country' && options?.useCountryDropdown && options?.selectedCountries?.length) {
+        // If it's a country column and useCountryDropdown is true, use the selected countries
+        const randomIndex = Math.floor(Math.random() * options.selectedCountries.length);
+        maskedRow[column.name] = options.selectedCountries[randomIndex];
       } else {
         // Pass constant values if they exist for this column
         const constantValues = columnUniqueValues[column.name];

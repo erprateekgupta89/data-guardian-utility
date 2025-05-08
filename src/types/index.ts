@@ -1,4 +1,5 @@
 
+
 export type DataType = 
   | 'Email'
   | 'Address'
@@ -51,3 +52,4 @@ export interface MaskingConfig {
   useCountryDropdown?: boolean;
   selectedCountries?: string[];
 }
+
