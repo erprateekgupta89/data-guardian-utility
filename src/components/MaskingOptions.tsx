@@ -19,18 +19,13 @@ import {
   SelectValue 
 } from "@/components/ui/select";
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-} from "@/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator
+} from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Check as CheckIcon, ChevronsUpDown } from "lucide-react";
 
@@ -69,7 +64,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
   const [selectedCountries, setSelectedCountries] = useState<string[]>([
     "United States", "United Kingdom", "Canada", "Australia"
   ]);
-  const [open, setOpen] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const handleApplyMasking = async () => {
     setIsProcessing(true);
@@ -177,53 +172,41 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
           {useCountryDropdown && (
             <div className="space-y-2">
               <Label>Select Countries</Label>
-              <Popover open={open} onOpenChange={setOpen}>
-                <PopoverTrigger asChild>
+              <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
+                <DropdownMenuTrigger asChild>
                   <Button
                     variant="outline"
-                    role="combobox"
-                    aria-expanded={open}
                     className="w-full justify-between"
-                    onClick={() => setOpen(!open)}
+                    onClick={() => setDropdownOpen(!dropdownOpen)}
                   >
                     {selectedCountries.length > 0
                       ? `${selectedCountries.length} countries selected`
                       : "Select countries..."}
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-full p-0" align="start">
-                  <Command className="w-full">
-                    <CommandInput placeholder="Search countries..." />
-                    <CommandEmpty>No country found.</CommandEmpty>
-                    <CommandGroup className="max-h-64 overflow-y-auto">
-                      {countries.map((country) => (
-                        <CommandItem
-                          key={country}
-                          value={country}
-                          onSelect={() => {
-                            setSelectedCountries((prev) =>
-                              prev.includes(country)
-                                ? prev.filter((item) => item !== country)
-                                : [...prev, country]
-                            );
-                          }}
-                        >
-                          <CheckIcon
-                            className={cn(
-                              "mr-2 h-4 w-4",
-                              selectedCountries.includes(country)
-                                ? "opacity-100"
-                                : "opacity-0"
-                            )}
-                          />
-                          {country}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-80" align="start">
+                  <DropdownMenuLabel>Select Countries</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <div className="max-h-64 overflow-y-auto">
+                    {countries.map((country) => (
+                      <DropdownMenuCheckboxItem
+                        key={country}
+                        checked={selectedCountries.includes(country)}
+                        onCheckedChange={(checked) => {
+                          setSelectedCountries(
+                            checked
+                              ? [...selectedCountries, country]
+                              : selectedCountries.filter(c => c !== country)
+                          );
+                        }}
+                      >
+                        {country}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <div className="flex flex-wrap gap-1 mt-2">
                 {selectedCountries.slice(0, 3).map((country) => (
                   <Badge key={country} variant="secondary" className="text-xs">
