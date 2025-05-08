@@ -184,6 +184,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
                     role="combobox"
                     aria-expanded={open}
                     className="w-full justify-between"
+                    onClick={() => setOpen(!open)}
                   >
                     {selectedCountries.length > 0
                       ? `${selectedCountries.length} countries selected`
