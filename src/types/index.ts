@@ -48,4 +48,5 @@ export interface MaskingConfig {
   preserveFormat: boolean;
   createTableSQL: boolean;
   tableName: string;
+  useCountryDropdown?: boolean;
 }
