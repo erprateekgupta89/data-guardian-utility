@@ -22,7 +22,7 @@ interface ExportOptionsProps {
   maskingConfig: MaskingConfig;
   onReset: () => void;
   displayExportControls?: boolean;
-  onNext?: () => void;
+  onUploadClick?: () => void;
 }
 
 const ExportOptions = ({ 
@@ -32,7 +32,7 @@ const ExportOptions = ({
   maskingConfig, 
   onReset, 
   displayExportControls = true,
-  onNext 
+  onUploadClick 
 }: ExportOptionsProps) => {
   const [exportFormat, setExportFormat] = useState<ExportFormat>('CSV');
   const [isExporting, setIsExporting] = useState(false);
@@ -83,7 +83,8 @@ const ExportOptions = ({
   
   const handleUploadNew = () => {
     // Navigate to the upload page by setting the activeStep to 'upload' in the parent component
-    navigate('/');
+    onUploadClick();
+    // navigate('/');
   };
 
   const handleReset = () => {
