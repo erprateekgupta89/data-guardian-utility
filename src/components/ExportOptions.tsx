@@ -87,7 +87,7 @@ const ExportOptions = ({
   };
 
   const handleReset = () => {
-    if (window.confirm('Are you sure you want to reset? This will clear all current data.')) {
+    if (window.confirm('All masked data will be irreversibly deleted upon reset. Are you sure you want to continue?')) {
       onReset();
       toast.success('Data has been reset successfully');
     }
