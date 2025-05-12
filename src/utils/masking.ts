@@ -18,7 +18,7 @@ export const maskData = (value: string, dataType: DataType, format?: string, con
       if (parts.length !== 2) return `user_${randomString(5)}@example.com`;
       const domainParts = parts[1].split('.');
       const tld = domainParts.pop();
-      return `user_${randomString(5)}@${randomString(5)}.${tld}`;
+      return `user_${randomString(5).toLowerCase()}@${randomString(5).toLowerCase()}.${tld}`;
     }
     
     case 'Phone Number': {
