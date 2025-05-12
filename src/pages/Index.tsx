@@ -4,7 +4,7 @@ import FileUpload from '@/components/FileUpload';
 import DataPreview from '@/components/DataPreview';
 import MaskingOptions from '@/components/MaskingOptions';
 import ExportOptions from '@/components/ExportOptions';
-import SettingsButton from '@/components/SettingsButton';
+// import SettingsButton from '@/components/SettingsButton';
 import { FileData, ColumnInfo, MaskingConfig } from '@/types';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -61,7 +61,7 @@ const Index = () => {
                 Securely mask sensitive data in your files
               </p>
             </div>
-            <SettingsButton />
+            {/* <SettingsButton /> */}
           </div>
         </div>
       </header>
@@ -145,7 +145,7 @@ const Index = () => {
                       maskingConfig={maskingConfig}
                       onReset={handleReset}
                       displayExportControls={false}
-                      onNext={() => setActiveStep('export')}
+                      // onNext={() => setActiveStep('export')}
                     />
                     <div className="flex justify-end mt-4">
                       <Button 
@@ -170,6 +170,7 @@ const Index = () => {
                     maskingConfig={maskingConfig}
                     onReset={handleReset}
                     displayExportControls={true}
+                    onUploadClick={() => setActiveStep('upload')}
                   />
                 )}
               </div>
