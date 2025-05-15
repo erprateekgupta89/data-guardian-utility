@@ -100,7 +100,7 @@ export const detectDataType = (value: string): DataType => {
   // Name (simple check)
   if (regexPatterns.name.test(strValue) && strValue.length < 40) {
     if (strValue.includes(' ')) return 'Name';
-    return 'First Name';
+    return 'Name';
   }
   
   // Gender
@@ -122,8 +122,8 @@ export const inferTypeFromColumnName = (columnName: string): DataType | null => 
   
   // Name patterns
   if (/^name$|full.?name|customer.?name|person|name.?|display.?name|user.?name/.test(name)) return 'Name';
-  if (/first.?name|given.?name|fname|forename/.test(name)) return 'First Name';
-  if (/last.?name|family.?name|surname|lname/.test(name)) return 'Last Name';
+  if (/first.?name|given.?name|fname|forename/.test(name)) return 'Name';
+  if (/last.?name|family.?name|surname|lname/.test(name)) return 'Name';
   
   // Location patterns
   if (/address|location|residence|street|addr/.test(name)) return 'Address';

@@ -54,8 +54,6 @@ export const maskData = (value: string, dataType: DataType, format?: string, con
     }
     
     case 'Name':
-    case 'First Name':
-    case 'Last Name':
       return maskPersonalInfo(value, dataType);
     
     case 'Address':

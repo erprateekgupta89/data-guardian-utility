@@ -1,9 +1,8 @@
-
 import { useState } from 'react';
 import { Check, Info } from 'lucide-react';
 import { ColumnInfo, FileData, MaskingConfig } from '@/types';
-import { maskDataSet } from '@/utils/masking';
-// import { maskDataWithAI } from '@/utils/aiMasking';
+// import { maskDataSet } from '@/utils/masking';
+import { maskDataWithAI } from '@/utils/aiMasking';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -80,23 +79,23 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
       };
       
       // Check if AI masking is enabled
-      const useAI = localStorage.getItem('use_ai') === 'true';
-      const apiKey = useAI ? localStorage.getItem('azure_openai_api_key') : null;
+      // const useAI = localStorage.getItem('use_ai') === 'true';
+      // const apiKey = localStorage.getItem('azure_openai_api_key') ;
 
-      if (useAI && !apiKey) {
-        toast({
-          title: "API Key Required",
-          description: "Please enter your OpenAI API key in settings to use AI masking.",
-          variant: "destructive",
-        });
-        setIsProcessing(false);
-        return;
-      }
+      // if (useAI && !apiKey) {
+      //   toast({
+      //     title: "API Key Required",
+      //     description: "Please enter your OpenAI API key in settings to use AI masking.",
+      //     variant: "destructive",
+      //   });
+      //   setIsProcessing(false);
+      //   return;
+      // }
 
       // Process data masking
       setTimeout(async () => {
         try {
-          const maskedData = maskDataSet(fileData.data, columns, { 
+          const maskedData = await maskDataWithAI(fileData, columns, { 
                 useCountryDropdown, 
                 selectedCountries 
               });
@@ -220,7 +219,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
             </div>
           )}
 
-          {/* Preserve Format Option */}
+          {/* Preserve Format Option
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <Label htmlFor="preserveFormat" className="cursor-pointer">
@@ -244,7 +243,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
               checked={preserveFormat}
               onCheckedChange={setPreserveFormat}
             />
-          </div>
+          </div> */}
         </div>
         
         <div className="pt-2 flex justify-center">
