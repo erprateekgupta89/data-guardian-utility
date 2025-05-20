@@ -136,6 +136,7 @@ export const inferTypeFromColumnName = (columnName: string): DataType | null => 
   if (/gender|sex/.test(name)) return 'Gender';
   if (/dob|birth|born|birthdate|birthday|age/.test(name)) return 'Date of birth';
   if (/ssn|social.?security|tax.?id|identifier/.test(name)) return 'String';
+  if (/marital|relationship/.test(name)) return 'String';
   
   // URL and web related
   if (/url|link|website|web.?site|site|domain/.test(name)) return 'String';

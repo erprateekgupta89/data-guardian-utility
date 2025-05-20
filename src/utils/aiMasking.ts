@@ -65,7 +65,7 @@ export const generateWithOpenAI = async (prompt: string, type: DataType, count: 
           top_p: 0.95 + Math.random() * 0.05,     // Slight variation in top_p
           frequency_penalty: Math.random() * 0.1,  // Small random frequency penalty
           presence_penalty: Math.random() * 0.1,   // Small random presence penalty
-          // request_id: requestId                    // Include request ID in the body
+          // request_id: requestId                    // Include request ID in the body: NOT REQUIRED
         }),
       });
       
