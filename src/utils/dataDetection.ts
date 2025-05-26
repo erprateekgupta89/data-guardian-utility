@@ -10,6 +10,8 @@ const regexPatterns = {
   date1: /^\d{4}-\d{2}-\d{2}$/, // YYYY-MM-DD
   date2: /^\d{1,2}\/\d{1,2}\/\d{4}$/, // MM/DD/YYYY
   date3: /^\d{1,2}-\d{1,2}-\d{4}$/, // MM-DD-YYYY
+  date4: /^\d{2}\/\d{2}\/\d{2}$/, // YY/MM/DD or DD/MM/YY
+  date5: /^\d{2}-\d{2}-\d{2}$/,   // YY-MM-DD or DD-MM-YY
   ipv4: /\b(?:\d{1,3}\.){3}\d{1,3}\b/,
   currency: /^[$€£¥₹][\d,.]+$|^[\d,.]+[$€£¥₹]$/,
   bool: /^(true|false|yes|no|0|1)$/i,
@@ -53,6 +55,15 @@ export const detectDataType = (value: string): DataType => {
   
   const strValue = String(value).trim();
   
+  // Dates (check before postal code!)
+  if (
+    regexPatterns.date1.test(strValue) ||
+    regexPatterns.date2.test(strValue) ||
+    regexPatterns.date3.test(strValue) ||
+    regexPatterns.date4.test(strValue) ||
+    regexPatterns.date5.test(strValue)
+  ) return 'Date';
+  
   // Email
   if (regexPatterns.email.test(strValue)) return 'Email';
   
@@ -70,13 +81,6 @@ export const detectDataType = (value: string): DataType => {
   
   // Zip/Postal Codes
   if (regexPatterns.zipCodeIndia.test(strValue) || regexPatterns.zipCodeUS.test(strValue)) return 'Postal Code';
-  
-  // Dates
-  if (
-    regexPatterns.date1.test(strValue) || 
-    regexPatterns.date2.test(strValue) || 
-    regexPatterns.date3.test(strValue)
-  ) return 'Date';
   
   // Date with Time
   if (regexPatterns.dateTime.test(strValue)) return 'Date Time';
@@ -188,9 +192,13 @@ export const detectColumnDataType = (samples: string[], columnName: string = '')
           return regexPatterns.phoneNumber.test(sample);
         case 'Date':
         case 'Date of birth':
-          return regexPatterns.date1.test(sample) || 
-                 regexPatterns.date2.test(sample) || 
-                 regexPatterns.date3.test(sample);
+          return (
+            regexPatterns.date1.test(sample) ||
+            regexPatterns.date2.test(sample) ||
+            regexPatterns.date3.test(sample) ||
+            regexPatterns.date4.test(sample) ||
+            regexPatterns.date5.test(sample)
+          );
         case 'Float':
           return regexPatterns.currency.test(sample) || /^[\d,.]+$/.test(sample);
         case 'Int':

@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Check, Info } from 'lucide-react';
 import { ColumnInfo, FileData, MaskingConfig } from '@/types';
-// import { maskDataSet } from '@/utils/masking';
-import { maskDataWithAI } from '@/utils/aiMasking';
+import { maskDataSet } from '@/utils/masking';
+// import { maskDataWithAI } from '@/utils/aiMasking';
+import { maskDataWithAIBatched } from '@/utils/aiMasking';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -27,6 +28,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Check as CheckIcon, ChevronsUpDown } from "lucide-react";
+import Chance from 'chance';
+import { Progress } from '@/components/ui/progress';
+const chance = new Chance();
 
 interface MaskingOptionsProps {
   fileData: FileData;
@@ -50,6 +54,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
   const [preserveFormat, setPreserveFormat] = useState(true);
   const [createTableSQL, setCreateTableSQL] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [progress, setProgress] = useState(0);
   
   // Check if a country column exists in the data
   const hasCountryColumn = columns.some(
@@ -57,7 +62,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
   );
   
   // Set default use dropdown country preference
-  const [useCountryDropdown, setUseCountryDropdown] = useState(true);
+  const [useCountryDropdown, setUseCountryDropdown] = useState(hasCountryColumn);
   
   // Selected countries for the multi-select
   const [selectedCountries, setSelectedCountries] = useState<string[]>([
@@ -67,9 +72,8 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
 
   const handleApplyMasking = async () => {
     setIsProcessing(true);
-    
+    setProgress(0);
     try {
-      // Create config object
       const maskingConfig: MaskingConfig = {
         preserveFormat,
         createTableSQL,
@@ -95,11 +99,12 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
       // Process data masking
       setTimeout(async () => {
         try {
-          const maskedData = await maskDataWithAI(fileData, columns, { 
-                useCountryDropdown, 
-                selectedCountries 
-              });
-            
+          const maskedData = await maskDataWithAIBatched(
+            fileData,
+            columns,
+            { useCountryDropdown, selectedCountries },
+            (p) => setProgress(p)
+          );
           onDataMasked(maskedData, maskingConfig);
         } catch (error) {
           console.error('Error during masking:', error);
@@ -133,6 +138,12 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {isProcessing && (
+          <div className="mb-4">
+            <Progress value={progress} />
+            <div className="text-xs text-center mt-1">{progress}%</div>
+          </div>
+        )}
         <div className="space-y-4">
           {/* Country Preference Option */}
           <div className="flex items-center justify-between">
