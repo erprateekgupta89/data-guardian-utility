@@ -66,7 +66,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
   
   // Selected countries for the multi-select
   const [selectedCountries, setSelectedCountries] = useState<string[]>([
-    "United States", "United Kingdom", "Canada", "Australia"
+    "India"
   ]);
   const [dropdownOpen, setDropdownOpen] = useState(false);
 

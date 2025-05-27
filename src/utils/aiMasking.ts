@@ -14,6 +14,86 @@ const MAX_RETRIES = 3;
 // List of geo-specific data types
 const GEO_FIELD_TYPES: DataType[] = ['Address', 'City', 'State', 'Postal Code'];
 
+// Country to nationality mapping (partial, extend as needed)
+const COUNTRY_TO_NATIONALITY: Record<string, string> = {
+  "United States": "American",
+  "Canada": "Canadian",
+  "United Kingdom": "British",
+  "Australia": "Australian",
+  "Germany": "German",
+  "France": "French",
+  "Spain": "Spanish",
+  "Italy": "Italian",
+  "Japan": "Japanese",
+  "China": "Chinese",
+  "India": "Indian",
+  "Brazil": "Brazilian",
+  "Mexico": "Mexican",
+  "South Africa": "South African",
+  "Russia": "Russian",
+  "South Korea": "South Korean",
+  "Netherlands": "Dutch",
+  "Sweden": "Swedish",
+  "Norway": "Norwegian",
+  "Denmark": "Danish",
+  "Finland": "Finnish",
+  "Switzerland": "Swiss",
+  "Austria": "Austrian",
+  "Belgium": "Belgian",
+  "Portugal": "Portuguese",
+  "Greece": "Greek",
+  "Ireland": "Irish",
+  "New Zealand": "New Zealander",
+  "Singapore": "Singaporean",
+  "Malaysia": "Malaysian",
+  "Thailand": "Thai",
+  "Indonesia": "Indonesian",
+  "Philippines": "Filipino",
+  "Vietnam": "Vietnamese",
+  "Turkey": "Turkish",
+  // Add more as needed
+};
+
+// Country to currency mapping (partial, extend as needed)
+const COUNTRY_TO_CURRENCY: Record<string, string> = {
+  "United States": "$",
+  "Canada": "C$",
+  "United Kingdom": "£",
+  "Australia": "A$",
+  "Germany": "€",
+  "France": "€",
+  "Spain": "€",
+  "Italy": "€",
+  "Japan": "¥",
+  "China": "¥",
+  "India": "₹",
+  "Brazil": "R$",
+  "Mexico": "$",
+  "South Africa": "R",
+  "Russia": "₽",
+  "South Korea": "₩",
+  "Netherlands": "€",
+  "Sweden": "kr",
+  "Norway": "kr",
+  "Denmark": "kr",
+  "Finland": "€",
+  "Switzerland": "CHF",
+  "Austria": "€",
+  "Belgium": "€",
+  "Portugal": "€",
+  "Greece": "€",
+  "Ireland": "€",
+  "New Zealand": "NZ$",
+  "Singapore": "$",
+  "Malaysia": "RM",
+  "Thailand": "฿",
+  "Indonesia": "Rp",
+  "Philippines": "₱",
+  "Vietnam": "₫",
+  "Turkey": "₺",
+  // Add more as needed
+};
+
 // Helper to check if a column is geo-specific
 function isGeoField(column: ColumnInfo): boolean {
   return GEO_FIELD_TYPES.includes(column.dataType);
@@ -71,6 +151,65 @@ function isMaritalStatusColumn(column: ColumnInfo): boolean {
   );
 }
 const MARITAL_STATUS_VALUES = ["Single", "Married", "Divorced", "Widowed", "In a relationship"];
+
+// Helper to detect salary/currency columns
+function isSalaryColumn(column: ColumnInfo): boolean {
+  const name = column.name.toLowerCase();
+  return (
+    name.includes('salary') ||
+    name.includes('income') ||
+    name.includes('wage') ||
+    name.includes('pay') ||
+    name.includes('compensation') ||
+    name.includes('earnings')
+  );
+}
+
+// Helper to enforce uniqueness in an array, with re-attempts for duplicates
+async function enforceBatchUniqueness(
+  generateFn: (count: number, indices: number[]) => Promise<string[]>,
+  initialValues: string[],
+  maxAttempts: number = 3
+): Promise<string[]> {
+  let values = [...initialValues];
+  let attempts = 0;
+  let uniqueSet = new Set(values);
+  let duplicateIndices: number[] = [];
+
+  while (attempts < maxAttempts) {
+    // Find indices of duplicates
+    const seen = new Map<string, number>();
+    duplicateIndices = [];
+    values.forEach((val, idx) => {
+      if (seen.has(val)) {
+        duplicateIndices.push(idx);
+      } else {
+        seen.set(val, idx);
+      }
+    });
+    if (duplicateIndices.length === 0) break; // All unique
+    // Re-generate only for duplicate indices
+    const newVals = await generateFn(duplicateIndices.length, duplicateIndices);
+    duplicateIndices.forEach((idx, i) => {
+      values[idx] = newVals[i];
+    });
+    uniqueSet = new Set(values);
+    attempts++;
+  }
+  // Final pass: if still not unique, forcibly make unique by appending index
+  if (new Set(values).size !== values.length) {
+    const seen = new Map<string, number>();
+    values = values.map((val, idx) => {
+      if (seen.has(val)) {
+        return val + '_' + idx;
+      } else {
+        seen.set(val, idx);
+        return val;
+      }
+    });
+  }
+  return values;
+}
 
 // Function to generate data with OpenAI
 export const generateWithOpenAI = async (prompt: string, type: DataType, count: number = 1, country: string = "India"): Promise<string[]> => {  // UPDATE TO PICK COUNTRY VALUE DYNAMICALLY     
@@ -207,6 +346,8 @@ export const maskDataWithAIBatched = async (
   const allRows = fileData.data;
   const batches = chunkArray(allRows, BATCH_SIZE);
   let maskedRows: Record<string, string>[] = [];
+  // Set to track unique emails
+  const usedEmails = new Set<string>();
 
   // Find if the file has a Country column
   const hasCountryColumn = columns.some(col => col.name.toLowerCase() === 'country');
@@ -269,23 +410,23 @@ export const maskDataWithAIBatched = async (
         const uniqueCountries = Array.from(new Set(countryList));
         let prompt = '';
         if (uniqueCountries.length === 1) {
-          prompt = `Generate ${batch.length} realistic ${column.dataType} values appropriate for people in ${uniqueCountries[0]}. Return ONLY a valid JSON array of strings with exactly ${batch.length} items, no extra text.`;
+          prompt = `Generate ${batch.length} realistic ${column.dataType} values appropriate for people in ${uniqueCountries[0]}. Return ONLY a valid JSON array of strings with exactly ${batch.length} items, no extra text. All values must be unique within the batch.`;
         } else {
-          prompt = `Generate ${batch.length} realistic ${column.dataType} values for people in the following countries (in order): [${countryList.join(', ')}]. Return ONLY a valid JSON array of strings with exactly ${batch.length} items, no extra text.`;
+          prompt = `Generate ${batch.length} realistic ${column.dataType} values for people in the following countries (in order): [${countryList.join(', ')}]. Return ONLY a valid JSON array of strings with exactly ${batch.length} items, no extra text. All values must be unique within the batch.`;
         }
-        try {
-          const aiResult = await generateWithOpenAI(prompt, column.dataType, batch.length, uniqueCountries[0]);
-          for (let rowIdx = 0; rowIdx < batch.length; rowIdx++) {
-            batchMaskedRows[rowIdx][column.name] = aiResult[rowIdx] || batch[rowIdx][column.name];
-          }
-          console.log(`[Batch ${batchIdx}] Masked geo column '${column.name}' AI result:`, aiResult);
-        } catch (error) {
-          // fallback: use original values
-          for (let rowIdx = 0; rowIdx < batch.length; rowIdx++) {
-            batchMaskedRows[rowIdx][column.name] = batch[rowIdx][column.name];
-          }
-          console.log(`[Batch ${batchIdx}] Masked geo column '${column.name}' AI fallback to original values.`);
+        // Enhanced: enforce uniqueness in the batch
+        const generateBatch = async (count: number, indices: number[]) => {
+          // For geo fields, always use the same prompt, but only need 'count' values
+          const subPrompt = prompt.replace(`${batch.length}`, `${count}`);
+          const aiResult = await generateWithOpenAI(subPrompt, column.dataType, count, uniqueCountries[0]);
+          return aiResult;
+        };
+        let aiResult = await generateWithOpenAI(prompt, column.dataType, batch.length, uniqueCountries[0]);
+        aiResult = await enforceBatchUniqueness(generateBatch, aiResult, 3);
+        for (let rowIdx = 0; rowIdx < batch.length; rowIdx++) {
+          batchMaskedRows[rowIdx][column.name] = aiResult[rowIdx] || batch[rowIdx][column.name];
         }
+        console.log(`[Batch ${batchIdx}] Masked geo column '${column.name}' AI result:`, aiResult);
       } else {
         // For non-geo fields, generate synthetic data for each row in the batch using random utilities
         const nonGeoValues: string[] = [];
@@ -298,6 +439,63 @@ export const maskDataWithAIBatched = async (
           // Marital/relationship status masking
           if (isMaritalStatusColumn(column) && column.dataType === 'String') {
             value = MARITAL_STATUS_VALUES[Math.floor(Math.random() * MARITAL_STATUS_VALUES.length)];
+          } else if (column.name.toLowerCase() === 'nationality') {
+            // Nationality masking based on country value
+            // Use the already-masked country value for this row
+            const countryCol = columns.find(col => col.name.toLowerCase() === 'country');
+            let countryValue = '';
+            if (countryCol) {
+              countryValue = batchMaskedRows[rowIdx][countryCol.name] || batch[rowIdx][countryCol.name] || '';
+            }
+            // Normalize country value for mapping
+            const mappedNationality = COUNTRY_TO_NATIONALITY[countryValue.trim()] || (countryValue ? countryValue + ' National' : 'National');
+            value = mappedNationality;
+          } else if (isSalaryColumn(column)) {
+            // Salary masking with country currency
+            const countryCol = columns.find(col => col.name.toLowerCase() === 'country');
+            let countryValue = '';
+            if (countryCol) {
+              countryValue = batchMaskedRows[rowIdx][countryCol.name] || batch[rowIdx][countryCol.name] || '';
+            }
+            const currency = COUNTRY_TO_CURRENCY[countryValue.trim()] || '$';
+            // Generate a random salary value (optionally, you can use originalValue to infer range)
+            const salary = chance.integer({ min: 20000, max: 200000 });
+            // Format: $50,000 or ₹50,000 etc.
+            value = `${currency}${salary.toLocaleString()}`;
+          } else if (column.name.toLowerCase() === 'email') {
+            // Email masking: preserve domain, randomize username, ensure uniqueness
+            const originalEmail = originalValue;
+            const atIdx = originalEmail.indexOf('@');
+            if (atIdx !== -1) {
+              const domain = originalEmail.slice(atIdx);
+              let email;
+              let attempts = 0;
+              do {
+                const username = chance.string({ length: 8, pool: 'abcdefghijklmnopqrstuvwxyz0123456789' });
+                email = `${username}${domain}`;
+                attempts++;
+                // Safety: avoid infinite loop (should never happen in practice)
+                if (attempts > 100) {
+                  email = `${username}${Date.now()}${domain}`;
+                  break;
+                }
+              } while (usedEmails.has(email));
+              usedEmails.add(email);
+              value = email;
+            } else {
+              let email;
+              let attempts = 0;
+              do {
+                email = chance.email();
+                attempts++;
+                if (attempts > 100) {
+                  email = `${chance.string({ length: 8 })}${Date.now()}@example.com`;
+                  break;
+                }
+              } while (usedEmails.has(email));
+              usedEmails.add(email);
+              value = email;
+            }
           } else {
             switch (column.dataType) {
               case 'Name':
