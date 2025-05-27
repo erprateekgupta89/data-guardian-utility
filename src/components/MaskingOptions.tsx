@@ -64,10 +64,8 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
   // Set default use dropdown country preference
   const [useCountryDropdown, setUseCountryDropdown] = useState(hasCountryColumn);
   
-  // Selected countries for the multi-select
-  const [selectedCountries, setSelectedCountries] = useState<string[]>([
-    "India"
-  ]);
+  // Selected country for the single-select
+  const [selectedCountry, setSelectedCountry] = useState<string>("India");
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const handleApplyMasking = async () => {
@@ -79,7 +77,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
         createTableSQL,
         tableName,
         useCountryDropdown,
-        selectedCountries
+        selectedCountries: [selectedCountry]
       };
       
       // Check if AI masking is enabled
@@ -102,7 +100,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
           const maskedData = await maskDataWithAIBatched(
             fileData,
             columns,
-            { useCountryDropdown, selectedCountries },
+            { useCountryDropdown, selectedCountries: [selectedCountry] },
             (p) => setProgress(p)
           );
           onDataMasked(maskedData, maskingConfig);
@@ -161,8 +159,8 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
                   <TooltipContent className="max-w-xs">
                     <p>
                       {hasCountryColumn 
-                        ? "If enabled, country preference will be applied based on the selected countries in the dropdown. If disabled, it uses the column data." 
-                        : "Country preference will be applied based on the selected countries in the dropdown as no country column is present in the uploaded file."}
+                        ? "If enabled, country preference will be applied based on the selected country in the dropdown. If disabled, it uses the column data." 
+                        : "Country preference will be applied based on the selected country in the dropdown as no country column is present in the uploaded file."}
                     </p>
                   </TooltipContent>
                 </Tooltip>
@@ -179,7 +177,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
           {/* Country Selection Dropdown - Show only if country preference is enabled */}
           {useCountryDropdown && (
             <div className="space-y-2">
-              <Label>Select Countries</Label>
+              <Label>Select Country</Label>
               <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -187,26 +185,20 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
                     className="w-full justify-between"
                     onClick={() => setDropdownOpen(!dropdownOpen)}
                   >
-                    {selectedCountries.length > 0
-                      ? `${selectedCountries.length} countries selected`
-                      : "Select countries..."}
+                    {selectedCountry || "Select country..."}
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-80" align="start">
-                  <DropdownMenuLabel>Select Countries</DropdownMenuLabel>
+                  <DropdownMenuLabel>Select Country</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <div className="max-h-64 overflow-y-auto">
                     {countries.map((country) => (
                       <DropdownMenuCheckboxItem
                         key={country}
-                        checked={selectedCountries.includes(country)}
+                        checked={selectedCountry === country}
                         onCheckedChange={(checked) => {
-                          setSelectedCountries(
-                            checked
-                              ? [...selectedCountries, country]
-                              : selectedCountries.filter(c => c !== country)
-                          );
+                          if (checked) setSelectedCountry(country);
                         }}
                       >
                         {country}
@@ -216,14 +208,9 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
                 </DropdownMenuContent>
               </DropdownMenu>
               <div className="flex flex-wrap gap-1 mt-2">
-                {selectedCountries.slice(0, 3).map((country) => (
-                  <Badge key={country} variant="secondary" className="text-xs">
-                    {country}
-                  </Badge>
-                ))}
-                {selectedCountries.length > 3 && (
-                  <Badge variant="secondary" className="text-xs">
-                    +{selectedCountries.length - 3} more
+                {selectedCountry && (
+                  <Badge key={selectedCountry} variant="secondary" className="text-xs">
+                    {selectedCountry}
                   </Badge>
                 )}
               </div>
