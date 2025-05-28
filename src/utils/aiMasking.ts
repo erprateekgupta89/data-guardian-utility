@@ -348,6 +348,8 @@ export const maskDataWithAIBatched = async (
   let maskedRows: Record<string, string>[] = [];
   // Set to track unique emails
   const usedEmails = new Set<string>();
+  // Set to track unique usernames
+  const usedUsernames = new Set<string>();
 
   // Find if the file has a Country column
   const hasCountryColumn = columns.some(col => col.name.toLowerCase() === 'country');
@@ -496,9 +498,30 @@ export const maskDataWithAIBatched = async (
               usedEmails.add(email);
               value = email;
             }
+          } else if (column.name.toLowerCase() === 'username') {
+            // Username masking: treat as generic String, ensure alphanumeric and unique
+            let username;
+            let attempts = 0;
+            do {
+              // Generate a username with text and numbers (e.g., user123, alex99)
+              const prefix = chance.string({ length: chance.integer({ min: 3, max: 6 }), pool: 'abcdefghijklmnopqrstuvwxyz' });
+              const suffix = chance.integer({ min: 10, max: 99999 }).toString();
+              username = `${prefix}${suffix}`;
+              attempts++;
+              if (attempts > 100) {
+                username = `${prefix}${suffix}${Date.now()}`;
+                break;
+              }
+            } while (usedUsernames.has(username));
+            usedUsernames.add(username);
+            value = username;
           } else {
             switch (column.dataType) {
               case 'Name':
+                // If this is a username column, skip Name logic (already handled above)
+                if (column.name.toLowerCase() === 'username') {
+                  break;
+                }
                 value = maskPersonalInfo(originalValue, 'Name');
                 break;
               case 'Email':

@@ -118,14 +118,23 @@ export const detectDataType = (value: string): DataType => {
 export const inferTypeFromColumnName = (columnName: string): DataType | null => {
   const name = columnName.toLowerCase();
   
+  // Username pattern (must be before Name patterns)
+  if (/^username$/.test(name)) return 'String';
+  
   // Email patterns
   if (/email|e-mail|mail\b|email_?address/.test(name)) return 'Email';
   
   // Phone number patterns
   if (/phone|mobile|contact|cell|tel|fax|tele|number/.test(name)) return 'Phone Number';
   
-  // Name patterns
-  if (/^name$|full.?name|customer.?name|person|name.?|display.?name|user.?name/.test(name)) return 'Name';
+  // Name patterns (exclude username)
+  if (
+    /^name$/.test(name) ||
+    /full.?name/.test(name) ||
+    /customer.?name/.test(name) ||
+    /person/.test(name) ||
+    /display.?name/.test(name)
+  ) return 'Name';
   if (/first.?name|given.?name|fname|forename/.test(name)) return 'Name';
   if (/last.?name|family.?name|surname|lname/.test(name)) return 'Name';
   
