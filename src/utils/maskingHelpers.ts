@@ -27,6 +27,7 @@ export const getRandomSample = (data: Record<string, string>[], sampleSize: numb
   return shuffled.slice(0, Math.min(sampleSize, data.length));
 };
 
+// Utility to split an array into chunks of a given size
 export function chunkArray<T>(array: T[], chunkSize: number): T[][] {
   const results: T[][] = [];
   for (let i = 0; i < array.length; i += chunkSize) {

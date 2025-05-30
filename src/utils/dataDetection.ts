@@ -160,7 +160,7 @@ export const inferTypeFromColumnName = (columnName: string): DataType | null => 
   if (/datetime|timestamp/.test(name)) return 'Date Time';
   
   // Financial patterns
-  if (/credit.?card|card.?number|cc.?number|ccnum|payment.?card/.test(name)) return 'String';
+  if (/credit.?card|debit.?card|card.?number|cc.?number|ccnum|payment.?card/.test(name)) return 'String';
   if (/price|cost|amount|salary|income|pay|fee|charge|money|dollar|euro|rupee|pound|yen/.test(name)) return 'Float';
   
   // Organization patterns
@@ -291,6 +291,11 @@ export const detectColumnDataType = (samples: string[], columnName: string = '')
     }
     
     // Default to String for mixed data
+    return 'String';
+  }
+  
+  // If column name matches card patterns, force String
+  if (/credit.?card|debit.?card|card.?number|cc.?number|ccnum|payment.?card/i.test(columnName)) {
     return 'String';
   }
   
