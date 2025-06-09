@@ -1,5 +1,3 @@
-
-
 export type DataType = 
   | 'Email'
   | 'Address'
@@ -24,6 +22,7 @@ export type DataType =
   | 'Date of birth'
   | 'Text'
   | 'Password'
+  | 'Nationality'
   | 'Unknown';
 
 export interface ColumnInfo {

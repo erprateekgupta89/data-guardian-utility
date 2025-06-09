@@ -13,7 +13,7 @@ const AZURE_OPENAI_API_VERSION = "2025-01-01-preview";
 const MAX_RETRIES = 3;
 
 // List of geo-specific data types
-const GEO_FIELD_TYPES: DataType[] = ['Address', 'City', 'State', 'Postal Code'];
+const GEO_FIELD_TYPES: DataType[] = ['Address', 'City', 'State', 'Postal Code', 'Nationality'];
 
 // Country to nationality mapping (partial, extend as needed)
 const COUNTRY_TO_NATIONALITY: Record<string, string> = {
@@ -619,6 +619,29 @@ function formatPhoneNumberStrict(original: string, country: string, usedNumbers:
   return result;
 }
 
+// Helper to detect and extend sequence patterns like 'character 1', 'character 2', ...
+function detectSequencePattern(values: string[]): { prefix: string, start: number, pad: number, matched: boolean } {
+  // Find the longest common prefix and check if all values end with a number
+  const regex = /^(.*?)(\d+)$/;
+  let prefix = '';
+  let numbers: number[] = [];
+  let pad = 0;
+  for (const val of values) {
+    const match = val.match(regex);
+    if (!match) return { prefix: '', start: 0, pad: 0, matched: false };
+    if (!prefix) prefix = match[1];
+    if (match[1] !== prefix) return { prefix: '', start: 0, pad: 0, matched: false };
+    numbers.push(parseInt(match[2], 10));
+    pad = Math.max(pad, match[2].length);
+  }
+  // Check if numbers are a contiguous sequence
+  numbers.sort((a, b) => a - b);
+  for (let i = 1; i < numbers.length; i++) {
+    if (numbers[i] !== numbers[i - 1] + 1) return { prefix: '', start: 0, pad: 0, matched: false };
+  }
+  return { prefix, start: numbers[0], pad, matched: true };
+}
+
 // Main batch masking function
 export const maskDataWithAIBatched = async (
   fileData: FileData,
@@ -651,6 +674,8 @@ export const maskDataWithAIBatched = async (
   const usedAddresses = new Set<string>();
   const geoReference: Record<string, string[]> = {};
   const geoFirstBatch: Record<string, string[]> = {};
+  // Store sequence patterns per column
+  const sequencePatterns: Record<string, { prefix: string, start: number, pad: number, matched: boolean }> = {};
   const hasCountryColumn = columns.some(col => col.name.toLowerCase() === 'country');
   let originalCountryValues: string[] = [];
   if (hasCountryColumn) {
@@ -668,6 +693,26 @@ export const maskDataWithAIBatched = async (
       consistentCountry = 'India';
     }
   }
+
+  // --- NEW LOGIC: If no country is selected, assign random country per row for first 100 rows ---
+  let assignedCountryPerRow: string[] = [];
+  if (hasCountryColumn && (!useCountryDropdown || !selectedCountries || selectedCountries.length === 0)) {
+    // Get all unique countries from the data
+    const countryColName = columns.find(col => col.name.toLowerCase() === 'country')!.name;
+    const uniqueCountries = Array.from(new Set(allRows.map(row => row[countryColName]).filter(Boolean)));
+    // For the first 100 rows, randomly assign a country from the unique list
+    assignedCountryPerRow = Array(Math.min(100, allRows.length)).fill('').map(() => {
+      return uniqueCountries[Math.floor(Math.random() * uniqueCountries.length)] || 'India';
+    });
+    // For rows beyond 100, repeat the assignment pattern
+    for (let i = 100; i < allRows.length; i++) {
+      assignedCountryPerRow[i] = assignedCountryPerRow[i % 100];
+    }
+  } else {
+    // If country is selected, use consistentCountry for all
+    assignedCountryPerRow = allRows.map(() => consistentCountry);
+  }
+
   // Detect card type for each credit/debit card column from the first row
   const cardTypeMap: Record<string, string> = {};
   columns.forEach(col => {
@@ -698,15 +743,27 @@ export const maskDataWithAIBatched = async (
         continue;
       }
       if (column.name.toLowerCase() === 'country') {
+        // --- Country Column Randomization Logic ---
+        // Get all unique country values from the data
+        const countryColName = column.name;
+        let uniqueCountries: string[] = [];
+        if (hasCountryColumn) {
+          uniqueCountries = Array.from(new Set(allRows.map(row => row[countryColName]).filter(Boolean)));
+        }
+        // Shuffle the unique countries for this batch
+        let shuffledCountries: string[] = [];
+        if (uniqueCountries.length > 0) {
+          shuffledCountries = [...uniqueCountries];
+          // Fisher-Yates shuffle
+          for (let i = shuffledCountries.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffledCountries[i], shuffledCountries[j]] = [shuffledCountries[j], shuffledCountries[i]];
+          }
+        }
         const countryValues: string[] = [];
         for (let rowIdx = 0; rowIdx < batch.length; rowIdx++) {
-          let value = '';
-          if (batchIdx === 0) {
-            value = consistentCountry;
-          } else {
-            // For subsequent batches, use the value from the corresponding row in the first batch
-            value = geoFirstBatch[column.name]?.[rowIdx % BATCH_SIZE] || consistentCountry;
-          }
+          // Assign a random country from the shuffled list, cycling if needed
+          let value = shuffledCountries.length > 0 ? shuffledCountries[rowIdx % shuffledCountries.length] : (assignedCountryPerRow[batchIdx * BATCH_SIZE + rowIdx] || consistentCountry);
           batchMaskedRows[rowIdx][column.name] = value;
           countryValues.push(value);
         }
@@ -716,106 +773,98 @@ export const maskDataWithAIBatched = async (
       }
       if (isGeoField(column)) {
         if (batchIdx === 0) {
-          // Strict mapping: For the first batch, geo fields must be directly and only from AI, no mutation or fallback.
-          // Only trigger the unified address prompt for the Address column
+          // --- NEW: For first batch, generate geo fields per row's assigned country ---
           if (column.dataType === 'Address' && !geoFirstBatch['Address']) {
-            let prompt = `Generate ${batch.length} unique, realistic postal addresses for software testing in ${consistentCountry}. Each address must include: street, city, state, postal code, and country — all in correct local format. Ensure postal codes match their corresponding city and state. Return only a valid JSON array of exactly ${batch.length} strings, with no extra text or metadata.`;
-            // --- Incremental retry mechanism for partially successful responses ---
-            let aiResult: string[] = Array(batch.length).fill('');
-            let attempts = 0;
-            let missingIndices = Array.from({ length: batch.length }, (_, i) => i);
-            const isValid = (val: string, idx: number, arr: string[]) => typeof val === 'string' && val.trim().length > 0 && arr.indexOf(val) === idx;
-            while (missingIndices.length > 0 && attempts < 3) {
-              const countToFetch = missingIndices.length;
-              const fetchPrompt = prompt.replace(`${batch.length}`, `${countToFetch}`);
-              const fetchResult = await generateWithOpenAI(fetchPrompt, column.dataType, countToFetch, consistentCountry);
-              // Place new results into the correct slots
-              for (let i = 0; i < fetchResult.length; i++) {
-                aiResult[missingIndices[i]] = fetchResult[i];
-              }
-              // Recompute missing/invalid indices
-              missingIndices = aiResult.map((val, idx, arr) => (!isValid(val, idx, arr) ? idx : -1)).filter(idx => idx !== -1);
-              attempts++;
+            // Group rows by assigned country for efficient AI calls
+            const countryGroups: Record<string, number[]> = {};
+            for (let rowIdx = 0; rowIdx < batch.length; rowIdx++) {
+              const rowCountry = assignedCountryPerRow[batchIdx * BATCH_SIZE + rowIdx] || consistentCountry;
+              if (!countryGroups[rowCountry]) countryGroups[rowCountry] = [];
+              countryGroups[rowCountry].push(rowIdx);
             }
-            // After all attempts, blank out any remaining invalids
-            for (let i = 0; i < aiResult.length; i++) {
-              if (!isValid(aiResult[i], i, aiResult)) {
-                aiResult[i] = '';
-              }
-            }
-            // Direct mapping: assign each AI result to its exact row index, no mutation or incrementing
-            const addressArr: string[] = [];
-            const cityArr: string[] = [];
-            const stateArr: string[] = [];
-            const postalArr: string[] = [];
-            const countryArr: string[] = [];
-            for (let idx = 0; idx < aiResult.length; idx++) {
-              const addr = aiResult[idx];
-              if (!addr) {
-                addressArr.push('');
-                cityArr.push('');
-                stateArr.push('');
-                postalArr.push('');
-                countryArr.push('');
-                continue;
-              }
-              // Try to parse as JSON object first
-              let street = '', city = '', state = '', postal = '', country = '';
-              let parsed = false;
-              try {
-                const obj = JSON.parse(addr);
-                if (typeof obj === 'object' && obj !== null) {
-                  street = obj.street || '';
-                  city = obj.city || '';
-                  state = obj.state || '';
-                  postal = obj.postal || obj.zip || obj['postal code'] || '';
-                  country = obj.country || consistentCountry;
-                  parsed = true;
+            // For each country, generate addresses for its rows
+            let addressArr: string[] = Array(batch.length).fill('');
+            let cityArr: string[] = Array(batch.length).fill('');
+            let stateArr: string[] = Array(batch.length).fill('');
+            let postalArr: string[] = Array(batch.length).fill('');
+            let countryArr: string[] = Array(batch.length).fill('');
+            for (const [country, indices] of Object.entries(countryGroups)) {
+              let prompt = `Generate ${indices.length} unique, realistic postal addresses for software testing in ${country}. Each address must include: street, city, state, postal code, and country — all in correct local format. Ensure postal codes match their corresponding city and state. Return only a valid JSON array of exactly ${indices.length} strings, with no extra text or metadata.`;
+              // --- Incremental retry mechanism for partially successful responses ---
+              let aiResult: string[] = Array(indices.length).fill('');
+              let attempts = 0;
+              let missingIndices = Array.from({ length: indices.length }, (_, i) => i);
+              const isValid = (val: string, idx: number, arr: string[]) => typeof val === 'string' && val.trim().length > 0 && arr.indexOf(val) === idx;
+              while (missingIndices.length > 0 && attempts < 3) {
+                const countToFetch = missingIndices.length;
+                const fetchPrompt = prompt.replace(`${indices.length}`, `${countToFetch}`);
+                const fetchResult = await generateWithOpenAI(fetchPrompt, column.dataType, countToFetch, country);
+                for (let i = 0; i < fetchResult.length; i++) {
+                  aiResult[missingIndices[i]] = fetchResult[i];
                 }
-              } catch {}
-              if (!parsed) {
-                // Fallback: parse as comma-separated string
-                const parts = addr.split(',').map(s => s.trim());
-                if (parts.length >= 5) {
-                  street = parts.slice(0, parts.length - 4).join(', ');
-                  city = parts[parts.length - 4];
-                  state = parts[parts.length - 3];
-                  postal = parts[parts.length - 2];
-                  country = parts[parts.length - 1];
-                } else if (parts.length === 4) {
-                  street = parts[0];
-                  city = parts[1];
-                  state = parts[2];
-                  postal = '';
-                  country = parts[3];
-                } else if (parts.length === 3) {
-                  street = parts[0];
-                  city = parts[1];
-                  state = '';
-                  postal = '';
-                  country = parts[2];
-                } else {
-                  street = addr;
-                  city = '';
-                  state = '';
-                  postal = '';
-                  country = consistentCountry;
-                }
-                if (!postal) {
-                  const postalMatch = addr.match(/\b\d{5,6}\b/);
-                  if (postalMatch) postal = postalMatch[0];
+                missingIndices = aiResult.map((val, idx, arr) => (!isValid(val, idx, arr) ? idx : -1)).filter(idx => idx !== -1);
+                attempts++;
+              }
+              for (let i = 0; i < aiResult.length; i++) {
+                if (!isValid(aiResult[i], i, aiResult)) {
+                  aiResult[i] = '';
                 }
               }
-              addressArr.push(street);
-              cityArr.push(city);
-              stateArr.push(state);
-              postalArr.push(postal);
-              countryArr.push(country);
-            }
-            // Validation: ensure all 100 address values are unique and non-blank
-            const addressSet = new Set(addressArr);
-            if (addressArr.length !== addressSet.size || addressArr.includes('')) {
-              console.error('[AI Masking] Address mapping failure in first batch:', addressArr);
+              // Parse and assign geo fields for each row in this country group
+              for (let i = 0; i < indices.length; i++) {
+                const idx = indices[i];
+                const addr = aiResult[i];
+                let street = '', city = '', state = '', postal = '', countryVal = country;
+                let parsed = false;
+                try {
+                  const obj = JSON.parse(addr);
+                  if (typeof obj === 'object' && obj !== null) {
+                    street = obj.street || '';
+                    city = obj.city || '';
+                    state = obj.state || '';
+                    postal = obj.postal || obj.zip || obj['postal code'] || '';
+                    countryVal = obj.country || country;
+                    parsed = true;
+                  }
+                } catch {}
+                if (!parsed) {
+                  const parts = addr.split(',').map(s => s.trim());
+                  if (parts.length >= 5) {
+                    street = parts.slice(0, parts.length - 4).join(', ');
+                    city = parts[parts.length - 4];
+                    state = parts[parts.length - 3];
+                    postal = parts[parts.length - 2];
+                    countryVal = parts[parts.length - 1];
+                  } else if (parts.length === 4) {
+                    street = parts[0];
+                    city = parts[1];
+                    state = parts[2];
+                    postal = '';
+                    countryVal = parts[3];
+                  } else if (parts.length === 3) {
+                    street = parts[0];
+                    city = parts[1];
+                    state = '';
+                    postal = '';
+                    countryVal = parts[2];
+                  } else {
+                    street = addr;
+                    city = '';
+                    state = '';
+                    postal = '';
+                    countryVal = country;
+                  }
+                  if (!postal) {
+                    const postalMatch = addr.match(/\b\d{5,6}\b/);
+                    if (postalMatch) postal = postalMatch[0];
+                  }
+                }
+                addressArr[idx] = street;
+                cityArr[idx] = city;
+                stateArr[idx] = state;
+                postalArr[idx] = postal;
+                countryArr[idx] = countryVal;
+              }
             }
             geoFirstBatch['Address'] = addressArr.slice();
             geoFirstBatch['City'] = cityArr.slice();
@@ -827,7 +876,6 @@ export const maskDataWithAIBatched = async (
             geoReference['State'] = stateArr;
             geoReference['Postal Code'] = postalArr;
             geoReference['Country'] = countryArr;
-            // Strict assignment: map each value to its exact row
             for (let rowIdx = 0; rowIdx < batch.length; rowIdx++) {
               batchMaskedRows[rowIdx]['Address'] = addressArr[rowIdx];
               batchMaskedRows[rowIdx]['City'] = cityArr[rowIdx];
@@ -848,25 +896,31 @@ export const maskDataWithAIBatched = async (
           // For subsequent batches, fallback logic is allowed as before
           if (geoFirstBatch[column.dataType]) {
             for (let rowIdx = 0; rowIdx < batch.length; rowIdx++) {
-              // For Address, increment house number by group number; for others, just copy
               if (column.dataType === 'Address') {
                 const base = geoFirstBatch['Address'][rowIdx];
                 const match = base.match(/(\d+)(.*)/);
                 if (match) {
                   const baseNum = parseInt(match[1], 10);
-                  const group = batchIdx; // batchIdx: 1 for 101-200, 2 for 201-300, etc.
-                  batchMaskedRows[rowIdx][column.name] = `${baseNum + group}${match[2]}`;
+                  const group = batchIdx;
+                  batchMaskedRows[rowIdx][column.dataType] = `${baseNum + group}${match[2]}`;
                 } else {
-                  batchMaskedRows[rowIdx][column.name] = base;
+                  batchMaskedRows[rowIdx][column.dataType] = base;
                 }
-                // Also update City, State, Postal Code for this row to match the first batch
                 if (geoFirstBatch['City']) batchMaskedRows[rowIdx]['City'] = geoFirstBatch['City'][rowIdx];
                 if (geoFirstBatch['State']) batchMaskedRows[rowIdx]['State'] = geoFirstBatch['State'][rowIdx];
                 if (geoFirstBatch['Postal Code']) batchMaskedRows[rowIdx]['Postal Code'] = geoFirstBatch['Postal Code'][rowIdx];
-              } else if (['City', 'State', 'Postal Code'].includes(column.dataType)) {
-                batchMaskedRows[rowIdx][column.name] = geoFirstBatch[column.dataType][rowIdx];
+                if (geoFirstBatch['Country']) batchMaskedRows[rowIdx]['Country'] = geoFirstBatch['Country'][rowIdx];
+                if (geoFirstBatch['Country'] && geoFirstBatch['Nationality']) {
+                  const countryValue = geoFirstBatch['Country'][rowIdx] || '';
+                  batchMaskedRows[rowIdx]['Nationality'] = COUNTRY_TO_NATIONALITY[countryValue.trim()] || (countryValue ? countryValue + ' National' : 'National');
+                }
+              } else if (['City', 'State', 'Postal Code', 'Country'].includes(column.dataType)) {
+                batchMaskedRows[rowIdx][column.dataType] = geoFirstBatch[column.dataType][rowIdx];
+              } else if (column.dataType === 'Nationality') {
+                const countryValue = geoFirstBatch['Country'] ? geoFirstBatch['Country'][rowIdx] : '';
+                batchMaskedRows[rowIdx][column.dataType] = COUNTRY_TO_NATIONALITY[countryValue.trim()] || (countryValue ? countryValue + ' National' : 'National');
               } else {
-                batchMaskedRows[rowIdx][column.name] = generateGeoValueFromReference(geoFirstBatch[column.dataType], rowIdx, column.dataType);
+                batchMaskedRows[rowIdx][column.dataType] = generateGeoValueFromReference(geoFirstBatch[column.dataType], rowIdx, column.dataType);
               }
             }
             continue;
@@ -890,7 +944,7 @@ export const maskDataWithAIBatched = async (
             const countryCol = columns.find(col => col.name.toLowerCase() === 'country');
             let countryValue = '';
             if (countryCol) {
-              countryValue = batchMaskedRows[rowIdx][countryCol.name] || batch[rowIdx][countryCol.name] || '';
+              countryValue = batchMaskedRows[rowIdx][countryCol.name] || batch[rowIdx][countryCol.name] || assignedCountryPerRow[batchIdx * BATCH_SIZE + rowIdx] || '';
             }
             // Normalize country value for mapping
             const mappedNationality = COUNTRY_TO_NATIONALITY[countryValue.trim()] || (countryValue ? countryValue + ' National' : 'National');
@@ -900,7 +954,7 @@ export const maskDataWithAIBatched = async (
             const countryCol = columns.find(col => col.name.toLowerCase() === 'country');
             let countryValue = '';
             if (countryCol) {
-              countryValue = batchMaskedRows[rowIdx][countryCol.name] || batch[rowIdx][countryCol.name] || '';
+              countryValue = batchMaskedRows[rowIdx][countryCol.name] || batch[rowIdx][countryCol.name] || assignedCountryPerRow[batchIdx * BATCH_SIZE + rowIdx] || '';
             }
             const currency = COUNTRY_TO_CURRENCY[countryValue.trim()] || '$';
             // Generate a random salary value (optionally, you can use originalValue to infer range)
@@ -1015,7 +1069,7 @@ export const maskDataWithAIBatched = async (
               const countryCol = columns.find(col => col.name.toLowerCase() === 'country');
               let countryValue = '';
               if (countryCol) {
-                countryValue = batchMaskedRows[rowIdx][countryCol.name] || batch[rowIdx][countryCol.name] || '';
+                countryValue = batchMaskedRows[rowIdx][countryCol.name] || batch[rowIdx][countryCol.name] || assignedCountryPerRow[batchIdx * BATCH_SIZE + rowIdx] || '';
               }
               const mappedNationality = COUNTRY_TO_NATIONALITY[countryValue.trim()] || (countryValue ? countryValue + ' National' : 'National');
               value = mappedNationality;
@@ -1023,7 +1077,7 @@ export const maskDataWithAIBatched = async (
               const countryCol = columns.find(col => col.name.toLowerCase() === 'country');
               let countryValue = '';
               if (countryCol) {
-                countryValue = batchMaskedRows[rowIdx][countryCol.name] || batch[rowIdx][countryCol.name] || '';
+                countryValue = batchMaskedRows[rowIdx][countryCol.name] || batch[rowIdx][countryCol.name] || assignedCountryPerRow[batchIdx * BATCH_SIZE + rowIdx] || '';
               }
               const currency = COUNTRY_TO_CURRENCY[countryValue.trim()] || '$';
               const salary = chance.integer({ min: 20000, max: 200000 });
@@ -1165,6 +1219,29 @@ export const maskDataWithAIBatched = async (
           nonGeoValues.push(value);
         }
         console.log(`[Batch ${batchIdx}] Masked non-geo column '${column.name}' values:`, nonGeoValues);
+      }
+      // --- Sequence Extension Logic ---
+      // Only apply to non-geo, non-country columns
+      if (!isGeoField(column) && column.name.toLowerCase() !== 'country') {
+        // Check if the first batch contains a sequence pattern
+        if (batchIdx === 0) {
+          const firstBatchValues = batch.map(row => row[column.name]).filter(Boolean);
+          const seqPattern = detectSequencePattern(firstBatchValues);
+          if (seqPattern.matched) {
+            // Store the pattern for use in later batches
+            if (!sequencePatterns[column.name]) sequencePatterns[column.name] = seqPattern;
+          }
+        }
+        // For subsequent batches, if a sequence pattern was detected, extend it
+        if (batchIdx > 0 && sequencePatterns[column.name]) {
+          const seqPattern = sequencePatterns[column.name];
+          for (let rowIdx = 0; rowIdx < batch.length; rowIdx++) {
+            const seqNum = seqPattern.start + batchIdx * batch.length + rowIdx;
+            const paddedNum = seqNum.toString().padStart(seqPattern.pad, '0');
+            batchMaskedRows[rowIdx][column.name] = `${seqPattern.prefix}${paddedNum}`;
+          }
+          continue;
+        }
       }
     }
     // Add the masked rows from this batch to the overall result
