@@ -620,26 +620,34 @@ function formatPhoneNumberStrict(original: string, country: string, usedNumbers:
 }
 
 // Helper to detect and extend sequence patterns like 'character 1', 'character 2', ...
-function detectSequencePattern(values: string[]): { prefix: string, start: number, pad: number, matched: boolean } {
-  // Find the longest common prefix and check if all values end with a number
+function detectSequencePattern(values: string[]): { prefix: string, start: number, pad: number, matched: boolean, last: number } {
+  // Looser detection: accept if >70% of non-empty values match the pattern
   const regex = /^(.*?)(\d+)$/;
   let prefix = '';
   let numbers: number[] = [];
   let pad = 0;
+  let matchCount = 0;
+  let lastNum = 0;
   for (const val of values) {
+    if (!val) continue;
     const match = val.match(regex);
-    if (!match) return { prefix: '', start: 0, pad: 0, matched: false };
-    if (!prefix) prefix = match[1];
-    if (match[1] !== prefix) return { prefix: '', start: 0, pad: 0, matched: false };
-    numbers.push(parseInt(match[2], 10));
-    pad = Math.max(pad, match[2].length);
+    if (match) {
+      if (!prefix) prefix = match[1];
+      if (match[1] === prefix) {
+        numbers.push(parseInt(match[2], 10));
+        pad = Math.max(pad, match[2].length);
+        matchCount++;
+        lastNum = parseInt(match[2], 10);
+      }
+    }
   }
-  // Check if numbers are a contiguous sequence
+  const nonEmptyCount = values.filter(v => v).length;
+  if (matchCount / (nonEmptyCount || 1) < 0.7 || numbers.length === 0) {
+    return { prefix: '', start: 0, pad: 0, matched: false, last: 0 };
+  }
   numbers.sort((a, b) => a - b);
-  for (let i = 1; i < numbers.length; i++) {
-    if (numbers[i] !== numbers[i - 1] + 1) return { prefix: '', start: 0, pad: 0, matched: false };
-  }
-  return { prefix, start: numbers[0], pad, matched: true };
+  // Accept gaps, just extend from the max
+  return { prefix, start: numbers[0], pad, matched: true, last: Math.max(...numbers) };
 }
 
 // Main batch masking function
@@ -675,7 +683,7 @@ export const maskDataWithAIBatched = async (
   const geoReference: Record<string, string[]> = {};
   const geoFirstBatch: Record<string, string[]> = {};
   // Store sequence patterns per column
-  const sequencePatterns: Record<string, { prefix: string, start: number, pad: number, matched: boolean }> = {};
+  const sequencePatterns: Record<string, { prefix: string, start: number, pad: number, matched: boolean, last: number }> = {};
   const hasCountryColumn = columns.some(col => col.name.toLowerCase() === 'country');
   let originalCountryValues: string[] = [];
   if (hasCountryColumn) {
@@ -725,6 +733,13 @@ export const maskDataWithAIBatched = async (
     const batch = batches[batchIdx];
     const batchMaskedRows: Record<string, string>[] = batch.map(() => ({}));
     for (const column of columns) {
+      // --- Percentage Column Masking Logic (move to top, assign directly, skip rest) ---
+      if (/%|percent|percentage/i.test(column.name)) {
+        for (let rowIdx = 0; rowIdx < batch.length; rowIdx++) {
+          batchMaskedRows[rowIdx][column.name] = (Math.floor(Math.random() * 100) + 1).toString();
+        }
+        continue;
+      }
       // Preserve placeholder values: empty string, single space, or dash
       for (let rowIdx = 0; rowIdx < batch.length; rowIdx++) {
         const originalValue = batch[rowIdx][column.name];
@@ -743,27 +758,32 @@ export const maskDataWithAIBatched = async (
         continue;
       }
       if (column.name.toLowerCase() === 'country') {
-        // --- Country Column Randomization Logic ---
-        // Get all unique country values from the data
+        // --- Country Column Distribution-Preserving Randomization ---
+        // Get the original country values for this batch
         const countryColName = column.name;
-        let uniqueCountries: string[] = [];
-        if (hasCountryColumn) {
-          uniqueCountries = Array.from(new Set(allRows.map(row => row[countryColName]).filter(Boolean)));
+        const batchStartIdx = batchIdx * BATCH_SIZE;
+        const originalCountries: string[] = allRows.slice(batchStartIdx, batchStartIdx + batch.length).map(row => row[countryColName]).filter(Boolean);
+        // Count frequency of each unique value
+        const freqMap: Record<string, number> = {};
+        for (const val of originalCountries) {
+          freqMap[val] = (freqMap[val] || 0) + 1;
         }
-        // Shuffle the unique countries for this batch
-        let shuffledCountries: string[] = [];
-        if (uniqueCountries.length > 0) {
-          shuffledCountries = [...uniqueCountries];
-          // Fisher-Yates shuffle
-          for (let i = shuffledCountries.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [shuffledCountries[i], shuffledCountries[j]] = [shuffledCountries[j], shuffledCountries[i]];
+        // Build a new array with the same counts
+        let distributionArray: string[] = [];
+        for (const [val, count] of Object.entries(freqMap)) {
+          for (let i = 0; i < count; i++) {
+            distributionArray.push(val);
           }
         }
+        // Shuffle the array
+        for (let i = distributionArray.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [distributionArray[i], distributionArray[j]] = [distributionArray[j], distributionArray[i]];
+        }
+        // Assign shuffled values to the batch
         const countryValues: string[] = [];
         for (let rowIdx = 0; rowIdx < batch.length; rowIdx++) {
-          // Assign a random country from the shuffled list, cycling if needed
-          let value = shuffledCountries.length > 0 ? shuffledCountries[rowIdx % shuffledCountries.length] : (assignedCountryPerRow[batchIdx * BATCH_SIZE + rowIdx] || consistentCountry);
+          let value = distributionArray[rowIdx] || (assignedCountryPerRow[batchStartIdx + rowIdx] || consistentCountry);
           batchMaskedRows[rowIdx][column.name] = value;
           countryValues.push(value);
         }
@@ -1013,6 +1033,11 @@ export const maskDataWithAIBatched = async (
             usedUsernames.add(username);
             value = username;
           } else {
+            // --- Percentage Column Masking Logic ---
+            if (/%|percent|percentage/i.test(column.name)) {
+              value = (Math.floor(Math.random() * 100) + 1).toString();
+              continue;
+            }
             switch (column.dataType) {
               case 'Name':
                 // If this is a username column, skip Name logic (already handled above)
@@ -1220,28 +1245,21 @@ export const maskDataWithAIBatched = async (
         }
         console.log(`[Batch ${batchIdx}] Masked non-geo column '${column.name}' values:`, nonGeoValues);
       }
-      // --- Sequence Extension Logic ---
-      // Only apply to non-geo, non-country columns
-      if (!isGeoField(column) && column.name.toLowerCase() !== 'country') {
-        // Check if the first batch contains a sequence pattern
-        if (batchIdx === 0) {
-          const firstBatchValues = batch.map(row => row[column.name]).filter(Boolean);
-          const seqPattern = detectSequencePattern(firstBatchValues);
-          if (seqPattern.matched) {
-            // Store the pattern for use in later batches
-            if (!sequencePatterns[column.name]) sequencePatterns[column.name] = seqPattern;
-          }
+      // --- Generic Sequence Extension Logic (applies to any column) ---
+      if (sequencePatterns[column.name]) {
+        const seqPattern = sequencePatterns[column.name];
+        // Always generate new values starting from last+1, for all rows (exclude all original values)
+        const globalStartNum = seqPattern.last + 1;
+        const globalRowOffset = batchIdx * batch.length;
+        if (batchIdx === 0 && globalRowOffset === 0) {
+          console.log(`[SequenceMasking] Extending sequence for column '${column.name}' from ${globalStartNum}`);
         }
-        // For subsequent batches, if a sequence pattern was detected, extend it
-        if (batchIdx > 0 && sequencePatterns[column.name]) {
-          const seqPattern = sequencePatterns[column.name];
-          for (let rowIdx = 0; rowIdx < batch.length; rowIdx++) {
-            const seqNum = seqPattern.start + batchIdx * batch.length + rowIdx;
-            const paddedNum = seqNum.toString().padStart(seqPattern.pad, '0');
-            batchMaskedRows[rowIdx][column.name] = `${seqPattern.prefix}${paddedNum}`;
-          }
-          continue;
+        for (let rowIdx = 0; rowIdx < batch.length; rowIdx++) {
+          const seqNum = globalStartNum + globalRowOffset + rowIdx;
+          const paddedNum = seqNum.toString().padStart(seqPattern.pad, '0');
+          batchMaskedRows[rowIdx][column.name] = `${seqPattern.prefix}${paddedNum}`;
         }
+        continue;
       }
     }
     // Add the masked rows from this batch to the overall result
