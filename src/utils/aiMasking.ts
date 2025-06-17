@@ -1,16 +1,113 @@
+// import { OpenAI } from 'openai';
 import { toast } from "sonner";
 import { ColumnInfo, DataType, FileData } from '@/types';
 import { getRandomSample, chunkArray } from './maskingHelpers';
 import { maskPersonalInfo, maskLocationData, maskDateTime } from './dataTypeMasking';
 import { detectColumnDataType } from './dataDetection';
-import Chance from 'chance';
+import { Chance } from 'chance';
+
 const chance = new Chance();
+// const openai = new OpenAI({
+//   apiKey: process.env.OPENAI_API_KEY
+// });
 
 // Azure OpenAI configuration
-const apiKey = "AEw7fZ3WwPe6u6Msudlam9bpTz7sSM8JiUhVHIDtpvSHpXn4GDcIJQQJ99BBACYeBjFXJ3w3AAABACOGZap5";
+const AZURE_OPENAI_API_KEY = "AEw7fZ3WwPe6u6Msudlam9bpTz7sSM8JiUhVHIDtpvSHpXn4GDcIJQQJ99BBACYeBjFXJ3w3AAABACOGZap5";
 const AZURE_OPENAI_ENDPOINT = "https://qatai.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2025-01-01-preview";
 const AZURE_OPENAI_API_VERSION = "2025-01-01-preview";
 const MAX_RETRIES = 3;
+
+// Regex patterns for common data types
+const REGEX_PATTERNS = {
+  email: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
+  phoneNumber: /^\+?[1-9]\d{1,14}$/,
+  pan: /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/,
+  aadhaar: /^\d{4}\s\d{4}\s\d{4}$/,
+  date: /^\d{4}-\d{2}-\d{2}$/,
+  iban: /^[A-Z]{2}[0-9]{2}[A-Z0-9]{1,30}$/,
+  ssn: /^\d{3}-\d{2}-\d{4}$/,
+  ipv4: /^(\d{1,3}\.){3}\d{1,3}$/,
+  url: /^https?:\/\/[^\s/$.?#].[^\s]*$/,
+  name: /^[A-Za-z\s'-]+$/,
+  amount: /^\$\d{1,3}(,\d{3})*(\.\d{2})?$/,
+  percentage: /^\d{1,3}%$/,
+  creditCard: /^\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}$/
+};
+
+// Pattern detection functions
+function detectColumnPattern(values: string[]): { pattern: string; confidence: number } | null {
+  const nonEmptyValues = values.filter(v => v && v.trim() !== '');
+  if (nonEmptyValues.length === 0) return null;
+
+  let bestMatch: { pattern: string; confidence: number } | null = null;
+  let highestConfidence = 0;
+
+  for (const [pattern, regex] of Object.entries(REGEX_PATTERNS)) {
+    const matches = nonEmptyValues.filter(v => new RegExp(regex).test(v));
+    const confidence = matches.length / nonEmptyValues.length;
+    
+    if (confidence > highestConfidence && confidence > 0.5) {
+      highestConfidence = confidence;
+      bestMatch = { pattern, confidence };
+    }
+  }
+
+  return bestMatch;
+}
+
+// async function detectPatternWithAI(values: string[]): Promise<{ pattern: string; regex: string } | null> {
+//   try {
+//     const nonEmptyValues = values.filter(v => v && v.trim() !== '');
+//     if (nonEmptyValues.length === 0) return null;
+
+//     const sampleValues = nonEmptyValues.slice(0, 5);
+//     const prompt = `Analyze these values and identify their pattern:
+// ${sampleValues.join('\n')}
+
+// Return the pattern in JSON format:
+// {
+//   "pattern": "pattern_name",
+//   "regex": "regex_pattern"
+// }`;
+
+//     const response = await openai.chat.completions.create({
+//       model: "gpt-4",
+//       messages: [{ role: "user", content: prompt }],
+//       temperature: 0.1,
+//       max_tokens: 150
+//     });
+
+//     const result = response.choices[0]?.message?.content;
+//     if (!result) return null;
+
+//     try {
+//       const patternInfo = JSON.parse(result);
+//       if (patternInfo.pattern && patternInfo.regex) {
+//         return patternInfo;
+//       }
+//     } catch (e) {
+//       console.error('Failed to parse AI pattern response:', e);
+//     }
+//   } catch (error) {
+//     console.error('Error in AI pattern detection:', error);
+//   }
+//   return null;
+// }
+
+// function addPatternToPool(pattern: string, regex: string): void {
+//   if (!REGEX_PATTERNS[pattern]) {
+//     REGEX_PATTERNS[pattern] = regex;
+//   }
+// }
+
+function validateMaskedValue(original: string, masked: string, pattern: string): boolean {
+  if (original === masked) return false;
+
+  const regex = REGEX_PATTERNS[pattern];
+  if (!regex) return true;
+
+  return new RegExp(regex).test(masked);
+}
 
 // List of geo-specific data types
 const GEO_FIELD_TYPES: DataType[] = ['Address', 'City', 'State', 'Postal Code'];
@@ -291,6 +388,90 @@ const detectConstantColumns = (data: Record<string, string>[], columns: ColumnIn
   return constantColumns;
 };
 
+// Function to detect dual-label columns and their distribution
+const detectDualLabelColumns = (data: Record<string, string>[], columns: ColumnInfo[]): Record<string, { labels: string[], distribution: number[] }> => {
+  const dualLabelColumns: Record<string, { labels: string[], distribution: number[] }> = {};
+  
+  columns.forEach(column => {
+    if (column.skip) return; // Skip columns marked for skipping
+    
+    const values = data.map(row => (row[column.name] || '').trim()).filter(Boolean);
+    if (values.length === 0) return; // Skip empty columns
+    
+    // Get unique values and their counts
+    const valueCounts = new Map<string, number>();
+    values.forEach(value => {
+      valueCounts.set(value, (valueCounts.get(value) || 0) + 1);
+    });
+    
+    // Check if this is a dual-label column (exactly 2 unique values)
+    if (valueCounts.size === 2) {
+      const labels = Array.from(valueCounts.keys());
+      const total = values.length;
+      const distribution = labels.map(label => valueCounts.get(label)! / total);
+      
+      dualLabelColumns[column.name] = {
+        labels,
+        distribution
+      };
+      
+      console.log(`Column '${column.name}' is a dual-label column with values:`, labels, 'and distribution:', distribution);
+    }
+  });
+  
+  return dualLabelColumns;
+};
+
+// Function to generate a value based on the original distribution
+const generateValueFromDistribution = (labels: string[], distribution: number[]): string => {
+  const random = Math.random();
+  let cumulative = 0;
+  
+  for (let i = 0; i < distribution.length; i++) {
+    cumulative += distribution[i];
+    if (random <= cumulative) {
+      return labels[i];
+    }
+  }
+  
+  return labels[0]; // Fallback to first label
+};
+
+// Add sequential pattern detection function
+function detectSequentialPattern(values: string[]): { prefix: string; lastNumber: number } | null {
+  if (values.length < 2) return null;
+  
+  // Try to find a pattern like "abc1", "abc2", etc.
+  const pattern = /^([a-zA-Z]+)(\d+)$/;
+  const matches = values.map(v => v.match(pattern));
+  
+  // Check if all values match the pattern
+  if (!matches.every(m => m !== null)) return null;
+  
+  // Extract prefix and numbers
+  const firstMatch = matches[0]!;
+  const prefix = firstMatch[1];
+  
+  // Verify all values have the same prefix
+  if (!matches.every(m => m![1] === prefix)) return null;
+  
+  // Extract and sort numbers
+  const numbers = matches.map(m => parseInt(m![2], 10)).sort((a, b) => a - b);
+  
+  // Check if numbers are sequential
+  const isSequential = numbers.every((num, index) => {
+    if (index === 0) return true;
+    return num === numbers[index - 1] + 1;
+  });
+  
+  if (!isSequential) return null;
+  
+  return {
+    prefix,
+    lastNumber: numbers[numbers.length - 1]
+  };
+}
+
 // Function to generate data with OpenAI
 export const generateWithOpenAI = async (prompt: string, type: DataType, count: number = 1, country: string = "India"): Promise<string[]> => {  // UPDATE TO PICK COUNTRY VALUE DYNAMICALLY     
   let retryCount = 0;
@@ -331,7 +512,7 @@ export const generateWithOpenAI = async (prompt: string, type: DataType, count: 
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "api-key": apiKey,
+          "api-key": AZURE_OPENAI_API_KEY,
           // Add cache-busting headers
           "Cache-Control": "no-cache, no-store, must-revalidate",
           "Pragma": "no-cache",
@@ -687,6 +868,57 @@ export const maskDataWithAIBatched = async (
   // Detect constant columns
   const constantColumns = detectConstantColumns(fileData.data, columns);
   
+  // Detect dual-label columns
+  const dualLabelColumns = detectDualLabelColumns(fileData.data, columns);
+  
+  // Detect column patterns
+  const columnPatterns: Record<string, { pattern: string; confidence: number }> = {};
+  for (const column of columns) {
+    if (!column.skip && !constantColumns[column.name] && !dualLabelColumns[column.name]) {
+      const values = fileData.data.map(row => row[column.name]).filter(Boolean);
+      const pattern = detectColumnPattern(values);
+      if (pattern) {
+        columnPatterns[column.name] = pattern;
+        console.log(`Column '${column.name}' detected as ${pattern.pattern} with ${(pattern.confidence * 100).toFixed(1)}% confidence`);
+      } else {
+        // // Try AI-based pattern detection
+        // const aiPattern = await detectPatternWithAI(values);
+        // if (aiPattern) {
+        //   addPatternToPool(aiPattern.pattern, aiPattern.regex);
+        //   const matches = values.filter(v => new RegExp(aiPattern.regex).test(v));
+        //   const confidence = matches.length / values.length;
+        //   if (confidence > 0.5) {
+        //     columnPatterns[column.name] = {
+        //       pattern: aiPattern.pattern,
+        //       confidence
+        //     };
+        //     console.log(`Column '${column.name}' detected as ${aiPattern.pattern} with ${(confidence * 100).toFixed(1)}% confidence (AI)`);
+        //   }
+        // }
+        console.log(`Column '${column.name}' has no detectable pattern`);
+      }
+    }
+  }
+
+  // Detect sequential patterns
+  const sequentialPatterns: Record<string, { prefix: string; lastNumber: number }> = {};
+
+  // Detect sequential patterns in each column
+  for (const column of columns) {
+    if (column.skip) continue;
+    
+    const values = fileData.data.map(row => row[column.name]?.toString() || '');
+    const pattern = detectSequentialPattern(values);
+    
+    if (pattern) {
+      sequentialPatterns[column.name] = {
+        prefix: pattern.prefix,
+        lastNumber: pattern.lastNumber
+      };
+      console.log(`Column '${column.name}' detected as sequential pattern: ${pattern.prefix}[1-${pattern.lastNumber}]`);
+    }
+  }
+
   const { useCountryDropdown, selectedCountries } = options;
   const BATCH_SIZE = 100;
   const allRows = fileData.data;
@@ -703,6 +935,7 @@ export const maskDataWithAIBatched = async (
     const countryColName = columns.find(col => col.name.toLowerCase() === 'country')!.name;
     originalCountryValues = Array.from(new Set(allRows.map(row => row[countryColName]).filter(Boolean)));
   }
+
   // Determine the country to use for the first batch
   let consistentCountry = 'India';
   if (hasCountryColumn) {
@@ -733,15 +966,34 @@ export const maskDataWithAIBatched = async (
       }
     }
 
+    // Handle dual-label columns
+    for (const [columnName, { labels, distribution }] of Object.entries(dualLabelColumns)) {
+      for (let rowIdx = 0; rowIdx < batch.length; rowIdx++) {
+        batchMaskedRows[rowIdx][columnName] = generateValueFromDistribution(labels, distribution);
+      }
+    }
+
+    // Handle sequential patterns
+    for (const [columnName, pattern] of Object.entries(sequentialPatterns)) {
+      for (let rowIdx = 0; rowIdx < batch.length; rowIdx++) {
+        const currentNumber = pattern.lastNumber + 1 + rowIdx;
+        batchMaskedRows[rowIdx][columnName] = `${pattern.prefix}${currentNumber}`;
+      }
+      // Update the last number after processing the batch
+      sequentialPatterns[columnName].lastNumber += batch.length;
+    }
+
     // Handle geo-specific columns first
     const geoFields = columns.filter(col => 
       GEO_FIELD_TYPES.includes(col.dataType as any) && 
-      !constantColumns[col.name] // Skip if it's a constant column
+      !constantColumns[col.name] && // Skip if it's a constant column
+      !dualLabelColumns[col.name] && // Skip if it's a dual-label column
+      !sequentialPatterns[col.name] // Skip if it's a sequential pattern column
     );
 
     for (const column of columns) {
-      // Skip columns that are constant/uniform (already set)
-      if (constantColumns[column.name]) {
+      // Skip columns that are constant/uniform or dual-label (already set)
+      if (constantColumns[column.name] || dualLabelColumns[column.name] || sequentialPatterns[column.name]) {
         continue;
       }
       // Preserve placeholder values: empty string, single space, or dash
@@ -1231,8 +1483,113 @@ export const maskDataWithAIBatched = async (
         console.log(`[Batch ${batchIdx}] Masked non-geo column '${column.name}' values:`, nonGeoValues);
       }
     }
+
+    // Handle pattern-based columns
+    for (const [columnName, { pattern, confidence }] of Object.entries(columnPatterns)) {
+      const column = columns.find(col => col.name === columnName);
+      if (!column || column.skip) continue;
+
+      for (let rowIdx = 0; rowIdx < batch.length; rowIdx++) {
+        const originalValue = batch[rowIdx][columnName];
+        if (!originalValue || originalValue.trim() === '') {
+          batchMaskedRows[rowIdx][columnName] = originalValue;
+          continue;
+        }
+
+        let maskedValue = '';
+        let isValid = false;
+        let attempts = 0;
+        const maxAttempts = 20;
+
+        while (!isValid && attempts < maxAttempts) {
+          switch (pattern) {
+            case 'email':
+              maskedValue = chance.email();
+              while (maskedValue === originalValue || usedEmails.has(maskedValue)) {
+                maskedValue = chance.email();
+              }
+              usedEmails.add(maskedValue);
+              break;
+
+            case 'phoneNumber':
+              maskedValue = formatPhoneNumberStrict(originalValue, consistentCountry, new Set());
+              break;
+
+            case 'pan':
+              maskedValue = chance.string({ length: 5, pool: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' }) +
+                chance.string({ length: 4, pool: '0123456789' }) +
+                chance.string({ length: 1, pool: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' });
+              break;
+
+            case 'aadhaar':
+              maskedValue = Array(3).fill(0)
+                .map(() => chance.string({ length: 4, pool: '0123456789' }))
+                .join(' ');
+              break;
+
+            case 'date':
+              maskedValue = maskDateTime(originalValue, 'Date');
+              break;
+
+            case 'iban':
+              maskedValue = chance.string({ length: 2, pool: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' }) +
+                chance.string({ length: 2, pool: '0123456789' }) +
+                chance.string({ length: 20, pool: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789' });
+              break;
+
+            case 'ssn':
+              maskedValue = `${chance.string({ length: 3, pool: '0123456789' })}-` +
+                `${chance.string({ length: 2, pool: '0123456789' })}-` +
+                `${chance.string({ length: 4, pool: '0123456789' })}`;
+              break;
+
+            case 'ipv4':
+              maskedValue = Array(4).fill(0)
+                .map(() => chance.integer({ min: 0, max: 255 }))
+                .join('.');
+              break;
+
+            case 'url':
+              maskedValue = chance.url();
+              break;
+
+            case 'name':
+              maskedValue = chance.name();
+              break;
+
+            case 'amount':
+              const amount = chance.floating({ min: 100, max: 10000, fixed: 2 });
+              maskedValue = `$${amount.toLocaleString()}`;
+              break;
+
+            case 'percentage':
+              maskedValue = `${chance.integer({ min: 0, max: 100 })}%`;
+              break;
+
+            case 'creditCard':
+              maskedValue = chance.cc();
+              break;
+
+            default:
+              maskedValue = randomStringFromPattern('alphanumeric', originalValue.length, originalValue);
+          }
+
+          isValid = validateMaskedValue(originalValue, maskedValue, pattern);
+          attempts++;
+        }
+
+        if (!isValid) {
+          console.warn(`Failed to generate valid masked value for ${columnName} after ${maxAttempts} attempts`);
+          maskedValue = randomStringFromPattern('alphanumeric', originalValue.length, originalValue);
+        }
+
+        batchMaskedRows[rowIdx][columnName] = maskedValue;
+      }
+    }
+
     // Add the masked rows from this batch to the overall result
     maskedRows = maskedRows.concat(batchMaskedRows);
+    
     // Update progress after each batch
     if (onProgress) {
       const progress = Math.round((maskedRows.length / allRows.length) * 100);
@@ -1246,176 +1603,3 @@ export const maskDataWithAIBatched = async (
   if (onProgress) onProgress(100);
   return maskedRows;
 };
-
-// // Function to mask data using AI
-// export const maskDataWithAI = async (
-//   fileData: FileData,
-//   columns: ColumnInfo[],
-//   count: number = 1
-// ): Promise<Record<string, string>[]> => {
-//   interface MaskingOptions {
-//     count?: number;
-//     useCountryDropdown: boolean;
-//     selectedCountries: string[];
-//   }
-//   
-//   export const maskDataWithAI = async (
-//     fileData: FileData,
-//     columns: ColumnInfo[],
-//     options: MaskingOptions
-//   ): Promise<Record<string, string>[]> => {
-//     const { count = 1, useCountryDropdown, selectedCountries } = options;
-//     
-//   try {
-//     // Step 1: Sample the data if there are more than 1000 rows
-//     let workingData = fileData.data;
-//     if (workingData.length > 1000) {
-//       workingData = getRandomSample(workingData, 100);
-//     }
-//
-//     const maskedData = await Promise.all(
-//       workingData.map(async (row, rowIndex) => {
-//         const modifiedRow: Record<string, string> = {};
-//         
-//         for (const column of columns) {
-//           if (column.skip) {
-//             modifiedRow[column.name] = row[column.name];
-//             continue;
-//           }
-//
-//           // UPDATE CODE FOR VARIOUS PROMPTS
-//
-//           const value = row[column.name];
-//
-//           console.log("Value: ", value);
-//           console.log("Column: ", column.name);
-//           
-//           // Add row index to make prompts more unique
-//           const prompt = `Generate realistic ${column.dataType} data similar to the format of: ${value} (row: ${rowIndex})`;
-//           
-//           try {
-//             const newData = await generateWithOpenAI(prompt, column.dataType, count, "India");
-//             modifiedRow[column.name] = newData[0];
-//           } catch (error) {
-//             console.error(`Error generating data for column ${column.name}:`, error);
-//             modifiedRow[column.name] = value; // Keep original value on error
-//           }
-//         }
-//         
-//         return modifiedRow;
-//       })
-//     );
-//
-//     return maskedData;
-//   } catch (error) {
-//     console.error("Error while masking data:", error);
-//     toast.error("Failed to mask data with AI");
-//     throw error;
-//   }
-// };
-
-// import { toast } from "sonner";
- 
-// // Azure OpenAI configuration
-// const AZURE_OPENAI_API_KEY = "AEw7fZ3WwPe6u6Msudlam9bpTz7sSM8JiUhVHIDtpvSHpXn4GDcIJQQJ99BBACYeBjFXJ3w3AAABACOGZap5";
-// const AZURE_OPENAI_ENDPOINT = "https://qatai.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2025-01-01-preview";
-// const AZURE_OPENAI_API_VERSION = "2025-01-01-preview";
- 
-// export const validateApiKey = (): string => {
-//   return AZURE_OPENAI_API_KEY;
-// };
- 
-// export const generateWithOpenAI = async (prompt: string, type: string, count: number = 1): Promise<string[]> => {
-//   try {
-//     const apiKey = validateApiKey();
-//     // Craft a very specific system prompt to ensure we get exactly what we want
-//     const systemPrompt = `You are a data generation assistant that ONLY returns exact data items as requested.
-//     Generate ${count} realistic ${type} items.
-//     Do not include ANY explanation, formatting, or extra information.
-//     Return ONLY a valid JSON array of strings with EXACTLY ${count} data points.
-//     Format example: ["item1", "item2", "item3"]
-//     Each item in the array must be a simple string, not an object.`;
-//     console.log(`Generating ${count} ${type} items with Azure OpenAI...`);
-//     const response = await fetch(AZURE_OPENAI_ENDPOINT, {
-//       method: "POST",
-//       headers: {
-//         "Content-Type": "application/json",
-//         "api-key": apiKey,
-//       },
-//       body: JSON.stringify({
-//         messages: [
-//           { role: "system", content: systemPrompt },
-//           { role: "user", content: prompt }
-//         ],
-//         temperature: 0.7,
-//         max_tokens: 2048,
-//       }),
-//     });
- 
-//     const data = await response.json();
-//     if (data.error) {
-//       console.error("Azure OpenAI API error:", data.error);
-//       throw new Error(data.error.message || "Azure OpenAI API error");
-//     }
- 
-//     const content = data.choices[0].message.content.trim();
-//     console.log("Raw API response:", content);
-//     // Try to parse the response as JSON
-//     try {
-//       // First, find anything that looks like a JSON array in the response
-//       const jsonMatch = content.match(/\[.*\]/s);
-//       const jsonContent = jsonMatch ? jsonMatch[0] : content;
-//       const parsedItems = JSON.parse(jsonContent);
-//       if (Array.isArray(parsedItems)) {
-//         // If we got an array, ensure all items are strings
-//         return parsedItems.map(item => {
-//           if (typeof item === 'object' && item !== null) {
-//             // Handle complex object - extract most relevant string property
-//             if (Object.keys(item).length === 1) {
-//               // If object has only one property, use its value
-//               return String(Object.values(item)[0]);
-//             } else if (item.hasOwnProperty(type) || item.hasOwnProperty('value')) {
-//               // Try to find a property that matches the type or is called 'value'
-//               return String(item[type] || item['value']);
-//             } else {
-//               // Otherwise get the first string property
-//               const firstStringProp = Object.values(item).find(v => typeof v === 'string');
-//               return firstStringProp ? String(firstStringProp) : JSON.stringify(item);
-//             }
-//           }
-//           // Otherwise convert to string
-//           return String(item);
-//         }).slice(0, count);
-//       } else if (typeof parsedItems === 'object') {
-//         // Handle case where we got an object instead of an array
-//         return Array(count).fill(JSON.stringify(parsedItems));
-//       }
-//       // Fallback to string splitting if not a valid JSON array
-//       const items = content.split(/[\n,]/)
-//         .map(item => item.trim())
-//         .filter(Boolean);
-//       return items.length >= count ? items.slice(0, count) : Array(count).fill(content);
-//     } catch (e) {
-//       console.error("JSON parsing error:", e);
-//       // Last resort: split by newlines or commas
-//       const items = content
-//         .replace(/[\[\]"'{}]/g, '') // Remove JSON syntax
-//         .split(/[\n,]/)
-//         .map(item => item.trim())
-//         .filter(Boolean);
-//       if (items.length >= count) {
-//         return items.slice(0, count);
-//       }
-//       // If we couldn't get enough items, repeat what we have to fill the count
-//       const result = [];
-//       for (let i = 0; i < count; i++) {
-//         result.push(items[i % items.length] || content);
-//       }
-//       return result;
-//     }
-//   } catch (error: any) {
-//     console.error("Azure OpenAI generation error:", error);
-//     toast.error("Failed to generate data with Azure OpenAI");
-//     throw error;
-//   }
-// };
