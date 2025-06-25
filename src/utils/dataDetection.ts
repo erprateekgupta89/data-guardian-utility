@@ -187,13 +187,29 @@ export const inferTypeFromColumnName = (columnName: string): DataType | null => 
 
 // Advanced column data type detection with improved confidence scoring
 export const detectColumnDataType = (samples: string[], columnName: string = ''): DataType => {
-  // First try to infer from column name
+  // Remove empty samples, trim, and deduplicate
+  const validSamples = Array.from(new Set(samples.map(s => (s || '').trim()).filter(Boolean)));
+  if (validSamples.length === 0) return 'Unknown';
+
+  // 1. Robust Int detection FIRST
+  if (validSamples.every(v => !isNaN(Number(v)) && Number.isInteger(Number(v)))) return 'Int';
+
+  // 2. Robust Float detection
+  if (validSamples.every(v => !isNaN(Number(v))) && validSamples.some(v => !Number.isInteger(Number(v)))) return 'Float';
+
+  // 3. Boolean detection
+  const boolSet = new Set(['true', 'false', '0', '1']);
+  if (validSamples.every(v => boolSet.has(v.toLowerCase()))) return 'Bool';
+
+  // 4. Date detection
+  if (validSamples.every(v => !isNaN(Date.parse(v)))) return 'Date';
+
+  // 5. Fallback to name-based inference and confidence scoring
   const nameBasedType = inferTypeFromColumnName(columnName);
   if (nameBasedType) {
     // Validate the inferred type with sample data
     const sampleValidation = samples.some(sample => {
       if (!sample || sample.trim() === '') return false;
-      
       switch (nameBasedType) {
         case 'Email':
           return regexPatterns.email.test(sample);
@@ -218,7 +234,6 @@ export const detectColumnDataType = (samples: string[], columnName: string = '')
           return true; // For types without specific validation
       }
     });
-    
     if (sampleValidation || samples.length === 0) {
       return nameBasedType;
     }
@@ -226,19 +241,13 @@ export const detectColumnDataType = (samples: string[], columnName: string = '')
 
   // If name-based inference fails or validation fails, fall back to content-based detection
   if (samples.length === 0) return 'Unknown';
-  
-  // Remove empty samples
-  const validSamples = samples.filter(s => s && s.trim() !== '');
-  if (validSamples.length === 0) return 'Unknown';
-  
+
   // Count occurrences of each data type with confidence scoring
   const typeCounts: Record<DataType, number> = {} as Record<DataType, number>;
   const typeConfidence: Record<DataType, number> = {} as Record<DataType, number>;
-  
-  // Priority weights for different data types
   const typePriority: Record<string, number> = {
     'Email': 1.5,
-    'Phone Number': 1.3,
+    'Phone Number': 1.3,  
     'Date': 1.3,
     'Date of birth': 1.3,
     'Date Time': 1.3,
@@ -248,57 +257,58 @@ export const detectColumnDataType = (samples: string[], columnName: string = '')
     'Int': 0.7,
     'String': 0.5
   };
-  
   validSamples.forEach(sample => {
     const type = detectDataType(sample);
     typeCounts[type] = (typeCounts[type] || 0) + 1;
-    
-    // Apply priority weights
     const priority = typePriority[type] || 1.0;
     typeConfidence[type] = (typeConfidence[type] || 0) + priority;
   });
-  
-  // Find the most confident data type
   let maxConfidence = 0;
   let mostConfidentType: DataType = 'Unknown';
-  
   Object.entries(typeConfidence).forEach(([type, confidence]) => {
     if (confidence > maxConfidence) {
       maxConfidence = confidence;
       mostConfidentType = type as DataType;
     }
   });
-  
-  // Calculate percentage of samples matching the most confident type
   const typePercentage = typeCounts[mostConfidentType] / validSamples.length;
-  
-  // If the confidence is low, fall back to more general types based on data pattern
+  const allTypes = Object.keys(typeCounts);
+  if (allTypes.length === 1) {
+    return allTypes[0] as DataType;
+  }
+  if (allTypes.length === 2 && allTypes.includes('Int') && allTypes.includes('Float')) {
+    return 'Float';
+  }
+  if (allTypes.length === 1 && allTypes[0] === 'Bool') {
+    return 'Bool';
+  }
   if (typePercentage < 0.6 || mostConfidentType === 'Unknown') {
-    // Check if numeric values are predominant
     const numericTypes = ['Int', 'Float'];
     const totalNumeric = numericTypes.reduce((sum, type) => sum + (typeCounts[type as DataType] || 0), 0);
-    
     if (totalNumeric / validSamples.length > 0.7) {
-      return 'Float'; // Default to Float for mixed numeric data
+      if (typeCounts['Float'] && typeCounts['Int']) {
+        return 'Float';
+      }
+      if (typeCounts['Int'] && !typeCounts['Float']) {
+        return 'Int';
+      }
+      if (typeCounts['Float'] && !typeCounts['Int']) {
+        return 'Float';
+      }
     }
-    
-    // Check if date-like values are predominant
+    if ((typeCounts['Bool'] || 0) / validSamples.length > 0.7) {
+      return 'Bool';
+    }
     const dateTypes = ['Date', 'Date Time', 'Time', 'Date of birth'];
     const totalDates = dateTypes.reduce((sum, type) => sum + (typeCounts[type as DataType] || 0), 0);
-    
     if (totalDates / validSamples.length > 0.5) {
-      return 'Date'; // Default to Date for mixed date-like data
+      return 'Date';
     }
-    
-    // Default to String for mixed data
     return 'String';
   }
-  
-  // If column name matches card patterns, force String
   if (/credit.?card|debit.?card|card.?number|cc.?number|ccnum|payment.?card/i.test(columnName)) {
     return 'String';
   }
-  
   return mostConfidentType;
 };
 
@@ -322,3 +332,25 @@ export const parseCSV = (csvText: string): { headers: string[], rows: Record<str
   
   return { headers, rows };
 };
+
+/**
+ * UI-facing data type detection for a column of values.
+ * Returns one of: 'Int', 'Float', 'Boolean', 'Date', 'String'.
+ * - Trims, removes empty/null, deduplicates values.
+ * - Int: all unique values are valid integers (!isNaN(Number(val)) && Number.isInteger(Number(val))).
+ * - Float: all unique values are numeric and at least one is not integer.
+ * - Boolean: all unique values are one of: 'true', 'false', '0', '1' (case-insensitive).
+ * - Date: all unique values pass !isNaN(Date.parse(val)).
+ * - String: default if none of the above apply.
+ */
+export function detectColumnTypeUI(values: string[]): 'Int' | 'Float' | 'Boolean' | 'Date' | 'String' {
+  const unique = Array.from(new Set(values.map(v => (v || '').trim()).filter(Boolean)));
+  if (unique.length === 0) return 'String';
+
+  if (unique.every(v => !isNaN(Number(v)) && Number.isInteger(Number(v)))) return 'Int';
+  if (unique.every(v => !isNaN(Number(v))) && unique.some(v => !Number.isInteger(Number(v)))) return 'Float';
+  const boolSet = new Set(['true', 'false', '0', '1']);
+  if (unique.every(v => boolSet.has(v.toLowerCase()))) return 'Boolean';
+  if (unique.every(v => !isNaN(Date.parse(v)))) return 'Date';
+  return 'String';
+}
