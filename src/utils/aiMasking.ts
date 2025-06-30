@@ -896,18 +896,36 @@ export const maskDataWithAIBatched = async (
   options: MaskingOptions,
   onProgress?: (progress: number) => void
 ): Promise<Record<string, string>[]> => {
-  // --- Pre-masking: Re-infer and correct column data types ---
+  // --- Pre-masking: Re-infer and correct column data types (only if Unknown or not user-selected) ---
   columns.forEach(col => {
+    // Never override user-selected types
+    if (col.userModified) return;
+    // Only re-detect if the type is Unknown or if it appears to be auto-detected (not user-selected)
     if (
-      col.dataType === 'Postal Code' ||
       col.dataType === 'Unknown' ||
-      col.dataType === 'String' ||
-      col.dataType === 'Int'
+      (col.dataType === 'String' && !col.name.toLowerCase().includes('name') && !col.name.toLowerCase().includes('email'))
     ) {
       const samples = fileData.data.map(row => row[col.name]).filter(Boolean).slice(0, 20);
       const inferred = detectColumnDataType(samples, col.name);
       if (inferred && inferred !== 'Unknown' && inferred !== col.dataType) {
-        col.dataType = inferred;
+        // Only update if the inferred type is more specific than the current type
+        const typeSpecificity = {
+          'Int': 3,
+          'Float': 3,
+          'Date': 3,
+          'Email': 3,
+          'Phone Number': 3,
+          'Bool': 2,
+          'String': 1,
+          'Text': 1,
+          'Unknown': 0
+        };
+        const currentSpecificity = typeSpecificity[col.dataType] || 0;
+        const inferredSpecificity = typeSpecificity[inferred] || 0;
+        if (inferredSpecificity > currentSpecificity) {
+          col.dataType = inferred;
+          console.log(`[Data Type Detection] Updated column '${col.name}' from ${col.dataType} to ${inferred}`);
+        }
       }
     }
   });
@@ -1358,155 +1376,42 @@ export const maskDataWithAIBatched = async (
           // Infer format from the original value
           const originalValue = row[column.name] || '';
           const { pattern, length, type } = inferFormatPattern(originalValue);
-          // Marital/relationship status masking
-          if (isMaritalStatusColumn(column) && column.dataType === 'String') {
-            value = MARITAL_STATUS_VALUES[Math.floor(Math.random() * MARITAL_STATUS_VALUES.length)];
-          } else if (column.name.toLowerCase() === 'nationality') {
-            // Nationality masking based on country value
-            // Use the already-masked country value for this row
-            const countryCol = columns.find(col => col.name.toLowerCase() === 'country');
-            let countryValue = '';
-            if (countryCol) {
-              countryValue = batchMaskedRows[rowIdx][countryCol.name] || batch[rowIdx][countryCol.name] || '';
-            }
-            // Normalize country value for mapping
-            const mappedNationality = COUNTRY_TO_NATIONALITY[countryValue.trim()] || (countryValue ? countryValue + ' National' : 'National');
-            value = mappedNationality;
-          } else if (isSalaryColumn(column)) {
-            // Salary masking with country currency
-            const countryCol = columns.find(col => col.name.toLowerCase() === 'country');
-            let countryValue = '';
-            if (countryCol) {
-              countryValue = batchMaskedRows[rowIdx][countryCol.name] || batch[rowIdx][countryCol.name] || '';
-            }
-            const currency = COUNTRY_TO_CURRENCY[countryValue.trim()] || '$';
-            // Generate a random salary value (optionally, you can use originalValue to infer range)
-            const salary = chance.integer({ min: 20000, max: 200000 });
-            // Format: $50,000 or ₹50,000 etc.
-            value = `${currency}${salary.toLocaleString()}`;
-          } else if (column.name.toLowerCase() === 'email') {
-            // Email masking: preserve domain, randomize username, ensure uniqueness
-            const originalEmail = originalValue;
-            const atIdx = originalEmail.indexOf('@');
-            if (atIdx !== -1) {
-              const domain = originalEmail.slice(atIdx);
-              let email;
-              let attempts = 0;
-              do {
-                const username = chance.string({ length: 8, pool: 'abcdefghijklmnopqrstuvwxyz0123456789' });
-                email = `${username}${domain}`;
-                attempts++;
-                // Safety: avoid infinite loop (should never happen in practice)
-                if (attempts > 100) {
-                  email = `${username}${Date.now()}${domain}`;
-                  break;
-                }
-              } while (usedEmails.has(email));
-              usedEmails.add(email);
-              value = email;
-            } else {
-              let email;
-              let attempts = 0;
-              do {
-                email = chance.email();
-                attempts++;
-                if (attempts > 100) {
-                  email = `${chance.string({ length: 8 })}${Date.now()}@example.com`;
-                  break;
-                }
-              } while (usedEmails.has(email));
-              usedEmails.add(email);
-              value = email;
-            }
-          } else if (column.name.toLowerCase() === 'username') {
-            // Username masking: treat as generic String, ensure alphanumeric and unique
-            let username;
-            let attempts = 0;
-            do {
-              // Generate a username with text and numbers (e.g., user123, alex99)
-              const prefix = chance.string({ length: chance.integer({ min: 3, max: 6 }), pool: 'abcdefghijklmnopqrstuvwxyz' });
-              const suffix = chance.integer({ min: 10, max: 99999 }).toString();
-              username = `${prefix}${suffix}`;
-              attempts++;
-              if (attempts > 100) {
-                username = `${prefix}${suffix}${Date.now()}`;
-                break;
-              }
-            } while (usedUsernames.has(username));
-            usedUsernames.add(username);
-            value = username;
+          
+          // Step 3: Handle percentage-based columns
+          const columnNameLower = column.name.toLowerCase();
+          const isPercentageColumn = /%|percent|percentage/i.test(columnNameLower);
+          if (isPercentageColumn && (column.dataType === 'Int' || column.dataType === 'Float')) {
+            // Generate integers between 1 and 100 for percentage columns
+            value = chance.integer({ min: 1, max: 100 }).toString();
           } else {
-            switch (column.dataType) {
-              case 'Name':
-                // If this is a username column, skip Name logic (already handled above)
-                if (column.name.toLowerCase() === 'username') {
-                  break;
-                }
-                value = maskPersonalInfo(originalValue, 'Name');
-                break;
-              case 'Email':
-                value = chance.email();
-                break;
-              case 'Phone Number':
-                value = chance.phone();
-                break;
-              case 'Date':
-              case 'Date of birth':
-              case 'Time':
-              case 'Date Time':
-                value = maskDateTime(originalValue, column.dataType as any);
-                break;
-              case 'Int':
-                // Always generate a valid integer (whole number)
-                value = chance.integer({ min: 0, max: 10000 }).toString();
-                break;
-              case 'Float':
-                value = chance.floating({ min: 0, max: 10000, fixed: 2 }).toString();
-                break;
-              case 'Bool':
-                value = chance.bool().toString();
-                break;
-              case 'Gender':
-                value = chance.gender();
-                break;
-              case 'Company':
-                value = chance.company();
-                break;
-              case 'Password':
-                value = chance.string({ length: 10 });
-                break;
-              case 'Text':
-              case 'String':
-              default:
-                // Use the inferred pattern to generate a similar format
-                value = randomStringFromPattern(type, length, originalValue);
-                break;
-            }
-          }
-          // Ensure the masked value is different from the original value
-          let attempt = 0;
-          while (value === originalValue && attempt < 20) {
-            // Regenerate using the same logic
+            // Marital/relationship status masking
             if (isMaritalStatusColumn(column) && column.dataType === 'String') {
               value = MARITAL_STATUS_VALUES[Math.floor(Math.random() * MARITAL_STATUS_VALUES.length)];
             } else if (column.name.toLowerCase() === 'nationality') {
+              // Nationality masking based on country value
+              // Use the already-masked country value for this row
               const countryCol = columns.find(col => col.name.toLowerCase() === 'country');
               let countryValue = '';
               if (countryCol) {
                 countryValue = batchMaskedRows[rowIdx][countryCol.name] || batch[rowIdx][countryCol.name] || '';
               }
+              // Normalize country value for mapping
               const mappedNationality = COUNTRY_TO_NATIONALITY[countryValue.trim()] || (countryValue ? countryValue + ' National' : 'National');
               value = mappedNationality;
             } else if (isSalaryColumn(column)) {
+              // Salary masking with country currency
               const countryCol = columns.find(col => col.name.toLowerCase() === 'country');
               let countryValue = '';
               if (countryCol) {
                 countryValue = batchMaskedRows[rowIdx][countryCol.name] || batch[rowIdx][countryCol.name] || '';
               }
               const currency = COUNTRY_TO_CURRENCY[countryValue.trim()] || '$';
+              // Generate a random salary value (optionally, you can use originalValue to infer range)
               const salary = chance.integer({ min: 20000, max: 200000 });
+              // Format: $50,000 or ₹50,000 etc.
               value = `${currency}${salary.toLocaleString()}`;
             } else if (column.name.toLowerCase() === 'email') {
+              // Email masking: preserve domain, randomize username, ensure uniqueness
               const originalEmail = originalValue;
               const atIdx = originalEmail.indexOf('@');
               if (atIdx !== -1) {
@@ -1517,6 +1422,7 @@ export const maskDataWithAIBatched = async (
                   const username = chance.string({ length: 8, pool: 'abcdefghijklmnopqrstuvwxyz0123456789' });
                   email = `${username}${domain}`;
                   attempts++;
+                  // Safety: avoid infinite loop (should never happen in practice)
                   if (attempts > 100) {
                     email = `${username}${Date.now()}${domain}`;
                     break;
@@ -1539,11 +1445,13 @@ export const maskDataWithAIBatched = async (
                 value = email;
               }
             } else if (column.name.toLowerCase() === 'username') {
+              // Username masking: treat as generic String, ensure alphanumeric and unique
               let username;
               let attempts = 0;
               do {
+                // Generate a username with text and numbers (e.g., user123, alex99)
                 const prefix = chance.string({ length: chance.integer({ min: 3, max: 6 }), pool: 'abcdefghijklmnopqrstuvwxyz' });
-                const suffix = chance.string({ length: 10, pool: '0123456789'});
+                const suffix = chance.integer({ min: 10, max: 99999 }).toString();
                 username = `${prefix}${suffix}`;
                 attempts++;
                 if (attempts > 100) {
@@ -1554,8 +1462,9 @@ export const maskDataWithAIBatched = async (
               usedUsernames.add(username);
               value = username;
             } else {
-              switch (column.dataType) {
+              switch (column.dataType as DataType) {
                 case 'Name':
+                  // If this is a username column, skip Name logic (already handled above)
                   if (column.name.toLowerCase() === 'username') {
                     break;
                   }
@@ -1595,8 +1504,230 @@ export const maskDataWithAIBatched = async (
                 case 'Text':
                 case 'String':
                 default:
-                  value = randomStringFromPattern(type, length, originalValue);
+                  // General columns: type- and pattern-aware masking
+                  let maskedValue = '';
+                  let attempts = 0;
+                  const maxAttempts = 20;
+                  // Always honor explicit Int selection
+                  if (column.dataType === 'Int') {
+                    do {
+                      maskedValue = chance.integer({ min: 0, max: 10000 }).toString();
+                      attempts++;
+                    } while ((maskedValue === originalValue || isNaN(Number(maskedValue))) && attempts < maxAttempts);
+                    value = maskedValue;
+                  } else {
+                    const columnPattern = detectColumnPattern([originalValue]);
+                    do {
+                      if (columnPattern && columnPattern.confidence > 0.7) {
+                        // Use detected pattern for format-aware masking
+                        switch (columnPattern.pattern) {
+                          case 'email':
+                            maskedValue = chance.email();
+                            break;
+                          case 'phoneNumber':
+                            maskedValue = chance.phone();
+                            break;
+                          case 'pan':
+                            maskedValue = chance.string({ length: 5, pool: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' }) +
+                              chance.string({ length: 4, pool: '0123456789' }) +
+                              chance.string({ length: 1, pool: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' });
+                            break;
+                          case 'aadhaar':
+                            maskedValue = Array(3).fill(0)
+                              .map(() => chance.string({ length: 4, pool: '0123456789' }))
+                              .join(' ');
+                            break;
+                          case 'date':
+                            maskedValue = maskDateTime(originalValue, 'Date');
+                            break;
+                          case 'iban':
+                            maskedValue = chance.string({ length: 2, pool: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' }) +
+                              chance.string({ length: 2, pool: '0123456789' }) +
+                              chance.string({ length: 20, pool: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789' });
+                            break;
+                          case 'ssn':
+                            maskedValue = `${chance.string({ length: 3, pool: '0123456789' })}-` +
+                              `${chance.string({ length: 2, pool: '0123456789' })}-` +
+                              `${chance.string({ length: 4, pool: '0123456789' })}`;
+                            break;
+                          case 'ipv4':
+                            maskedValue = Array(4).fill(0)
+                              .map(() => chance.integer({ min: 0, max: 255 }))
+                              .join('.');
+                            break;
+                          case 'url':
+                            maskedValue = chance.url();
+                            break;
+                          case 'name':
+                            maskedValue = chance.name();
+                            break;
+                          case 'amount':
+                            const amount = chance.floating({ min: 100, max: 10000, fixed: 2 });
+                            maskedValue = `$${amount.toLocaleString()}`;
+                            break;
+                          case 'percentage':
+                            maskedValue = `${chance.integer({ min: 0, max: 100 })}%`;
+                            break;
+                          case 'creditCard':
+                            maskedValue = chance.cc();
+                            break;
+                          default:
+                            // Fallback to pattern-based generation
+                            maskedValue = randomStringFromPattern('alphanumeric', originalValue.length, originalValue);
+                        }
+                      } else {
+                        // Strictly match the selected data type
+                        switch (column.dataType as DataType) {
+                          case 'Float':
+                            maskedValue = chance.floating({ min: 0, max: 10000, fixed: 2 }).toString();
+                            break;
+                          case 'Bool':
+                            maskedValue = chance.bool().toString();
+                            break;
+                          case 'Date':
+                          case 'Date of birth':
+                          case 'Time':
+                          case 'Date Time':
+                            maskedValue = maskDateTime(originalValue, column.dataType as any);
+                            break;
+                          case 'Gender':
+                            maskedValue = chance.gender();
+                            break;
+                          case 'Company':
+                            maskedValue = chance.company();
+                            break;
+                          case 'Password':
+                            maskedValue = chance.string({ length: 10 });
+                            break;
+                          case 'Text':
+                          case 'String':
+                          default:
+                            maskedValue = randomStringFromPattern('alphanumeric', originalValue.length, originalValue);
+                            break;
+                        }
+                      }
+                      attempts++;
+                    } while (maskedValue === originalValue && attempts < maxAttempts);
+                    value = maskedValue;
+                  }
                   break;
+              }
+            }
+            // Ensure the masked value is different from the original value
+            let attempt = 0;
+            while (value === originalValue && attempt < 20) {
+              // Regenerate using the same logic
+              if (isMaritalStatusColumn(column) && column.dataType === 'String') {
+                value = MARITAL_STATUS_VALUES[Math.floor(Math.random() * MARITAL_STATUS_VALUES.length)];
+              } else if (column.name.toLowerCase() === 'nationality') {
+                const countryCol = columns.find(col => col.name.toLowerCase() === 'country');
+                let countryValue = '';
+                if (countryCol) {
+                  countryValue = batchMaskedRows[rowIdx][countryCol.name] || batch[rowIdx][countryCol.name] || '';
+                }
+                const mappedNationality = COUNTRY_TO_NATIONALITY[countryValue.trim()] || (countryValue ? countryValue + ' National' : 'National');
+                value = mappedNationality;
+              } else if (isSalaryColumn(column)) {
+                const countryCol = columns.find(col => col.name.toLowerCase() === 'country');
+                let countryValue = '';
+                if (countryCol) {
+                  countryValue = batchMaskedRows[rowIdx][countryCol.name] || batch[rowIdx][countryCol.name] || '';
+                }
+                const currency = COUNTRY_TO_CURRENCY[countryValue.trim()] || '$';
+                const salary = chance.integer({ min: 20000, max: 200000 });
+                value = `${currency}${salary.toLocaleString()}`;
+              } else if (column.name.toLowerCase() === 'email') {
+                const originalEmail = originalValue;
+                const atIdx = originalEmail.indexOf('@');
+                if (atIdx !== -1) {
+                  const domain = originalEmail.slice(atIdx);
+                  let email;
+                  let attempts = 0;
+                  do {
+                    const username = chance.string({ length: 8, pool: 'abcdefghijklmnopqrstuvwxyz0123456789' });
+                    email = `${username}${domain}`;
+                    attempts++;
+                    if (attempts > 100) {
+                      email = `${username}${Date.now()}${domain}`;
+                      break;
+                    }
+                  } while (usedEmails.has(email));
+                  usedEmails.add(email);
+                  value = email;
+                } else {
+                  let email;
+                  let attempts = 0;
+                  do {
+                    email = chance.email();
+                    attempts++;
+                    if (attempts > 100) {
+                      email = `${chance.string({ length: 8 })}${Date.now()}@example.com`;
+                      break;
+                    }
+                  } while (usedEmails.has(email));
+                  usedEmails.add(email);
+                  value = email;
+                }
+              } else if (column.name.toLowerCase() === 'username') {
+                let username;
+                let attempts = 0;
+                do {
+                  const prefix = chance.string({ length: chance.integer({ min: 3, max: 6 }), pool: 'abcdefghijklmnopqrstuvwxyz' });
+                  const suffix = chance.string({ length: 10, pool: '0123456789'});
+                  username = `${prefix}${suffix}`;
+                  attempts++;
+                  if (attempts > 100) {
+                    username = `${prefix}${suffix}${Date.now()}`;
+                    break;
+                  }
+                } while (usedUsernames.has(username));
+                usedUsernames.add(username);
+                value = username;
+              } else {
+                switch (column.dataType as DataType) {
+                  case 'Name':
+                    if (column.name.toLowerCase() === 'username') {
+                      break;
+                    }
+                    value = maskPersonalInfo(originalValue, 'Name');
+                    break;
+                  case 'Email':
+                    value = chance.email();
+                    break;
+                  case 'Phone Number':
+                    value = chance.phone();
+                    break;
+                  case 'Date':
+                  case 'Date of birth':
+                  case 'Time':
+                  case 'Date Time':
+                    value = maskDateTime(originalValue, column.dataType as any);
+                    break;
+                  case 'Int':
+                    // Always generate a valid integer (whole number)
+                    value = chance.integer({ min: 0, max: 10000 }).toString();
+                    break;
+                  case 'Float':
+                    value = chance.floating({ min: 0, max: 10000, fixed: 2 }).toString();
+                    break;
+                  case 'Bool':
+                    value = chance.bool().toString();
+                    break;
+                  case 'Gender':
+                    value = chance.gender();
+                    break;
+                  case 'Company':
+                    value = chance.company();
+                    break;
+                  case 'Password':
+                    value = chance.string({ length: 10 });
+                    break;
+                  case 'Text':
+                  case 'String':
+                  default:
+                    value = randomStringFromPattern(type, length, originalValue);
+                    break;
+                }
               }
             }
           }

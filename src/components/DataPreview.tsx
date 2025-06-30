@@ -1,7 +1,6 @@
-
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Table, Info } from 'lucide-react';
-import { ColumnInfo, DataType, FileData } from '@/types';
+import { ColumnInfo, DataType } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table as UITable, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -11,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface DataPreviewProps {
-  fileData: FileData;
+  columns: ColumnInfo[];
   onColumnsUpdate: (columns: ColumnInfo[]) => void;
 }
 
@@ -41,23 +40,20 @@ const DATA_TYPES: DataType[] = [
   'Year',
 ];
 
-const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
-  const [columns, setColumns] = useState<ColumnInfo[]>(fileData.columns);
+const DataPreview = ({ columns: initialColumns, onColumnsUpdate }: DataPreviewProps) => {
+  const [columns, setColumns] = useState<ColumnInfo[]>(initialColumns);
+  const [userSelectedTypes, setUserSelectedTypes] = useState<Set<string>>(new Set());
   const [automaticInference, setAutomaticInference] = useState(true);
-  
-  useEffect(() => {
-    setColumns(fileData.columns);
-  }, [fileData.columns]);
 
   const handleDataTypeChange = (columnId: string, newType: DataType) => {
     const updatedColumns = columns.map(col => {
       if (col.id === columnId) {
-        return { ...col, dataType: newType };
+        return { ...col, dataType: newType, userModified: true };
       }
       return col;
     });
-    
     setColumns(updatedColumns);
+    setUserSelectedTypes(prev => new Set([...prev, columnId]));
     onColumnsUpdate(updatedColumns);
   };
   
@@ -74,7 +70,7 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
   };
 
   // Helper function to determine badge color and get tooltip text based on data type
-  const getDataTypeBadgeColor = (dataType: DataType) => {
+  const getDataTypeBadgeColor = (dataType: DataType, columnId: string) => {
     if (dataType === 'Unknown') return 'bg-gray-200 text-gray-800';
     
     const sensitiveTypes = ['Email', 'Phone Number', 'Name', 'Address'];
@@ -84,7 +80,7 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
   };
   
   // Helper function to get tooltip content based on badge color
-  const getTooltipContent = (dataType: DataType) => {
+  const getTooltipContent = (dataType: DataType, columnId: string) => {
     if (dataType === 'Unknown') {
       return "Data type could not be automatically determined";
     }
@@ -95,6 +91,12 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
     }
     
     return `Detected ${dataType} format based on content pattern`;
+  };
+
+  // Helper function to get badge text
+  const getBadgeText = (columnId: string) => {
+    const column = columns.find(col => col.id === columnId);
+    return column?.userModified ? 'User-selected' : 'Auto-detected';
   };
 
   return (
@@ -120,7 +122,7 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
             </Tooltip>
           </TooltipProvider>
           <Badge variant="outline" className="font-normal">
-            {fileData.totalRows} rows
+            {columns.length} columns
           </Badge>
         </div>
       </CardHeader>
@@ -161,9 +163,9 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
                       <div className="space-y-1">
                         <div className="flex items-center space-x-2">
                           <Badge 
-                            className={`${getDataTypeBadgeColor(column.dataType)} px-2 py-0.5 text-xs font-normal`}
+                            className={`${getDataTypeBadgeColor(column.dataType, column.id)} px-2 py-0.5 text-xs font-normal`}
                           >
-                            Auto-detected
+                            {getBadgeText(column.id)}
                           </Badge>
                           <TooltipProvider>
                             <Tooltip>
@@ -174,7 +176,7 @@ const DataPreview = ({ fileData, onColumnsUpdate }: DataPreviewProps) => {
                               </TooltipTrigger>
                               <TooltipContent>
                                 <p className="text-xs">
-                                  {getTooltipContent(column.dataType)}
+                                  {getTooltipContent(column.dataType, column.id)}
                                 </p>
                               </TooltipContent>
                             </Tooltip>

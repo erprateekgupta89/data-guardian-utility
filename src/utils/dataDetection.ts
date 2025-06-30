@@ -55,6 +55,13 @@ export const detectDataType = (value: string): DataType => {
   
   const strValue = String(value).trim();
   
+  // Numbers - check FIRST to avoid misclassification by other patterns
+  if (regexPatterns.int.test(strValue)) return 'Int';
+  if (regexPatterns.float.test(strValue)) return 'Float';
+  
+  // Boolean - check early as it can be confused with numbers
+  if (regexPatterns.bool.test(strValue)) return 'Bool';
+  
   // Dates (check before postal code!)
   if (
     regexPatterns.date1.test(strValue) ||
@@ -94,13 +101,6 @@ export const detectDataType = (value: string): DataType => {
   // Currency - changed to Float to match DataType
   if (regexPatterns.currency.test(strValue)) return 'Float';
 
-  // Boolean
-  if (regexPatterns.bool.test(strValue)) return 'Bool';
-  
-  // Numbers
-  if (regexPatterns.int.test(strValue)) return 'Int';
-  if (regexPatterns.float.test(strValue)) return 'Float';
-  
   // Name (simple check)
   if (regexPatterns.name.test(strValue) && strValue.length < 40) {
     if (strValue.includes(' ')) return 'Name';
@@ -187,24 +187,69 @@ export const inferTypeFromColumnName = (columnName: string): DataType | null => 
 
 // Advanced column data type detection with improved confidence scoring
 export const detectColumnDataType = (samples: string[], columnName: string = ''): DataType => {
+  // Only consider values up to the last non-empty cell
+  let lastNonEmptyIdx = -1;
+  for (let i = samples.length - 1; i >= 0; i--) {
+    if (samples[i] && samples[i].toString().trim() !== '') {
+      lastNonEmptyIdx = i;
+      break;
+    }
+  }
+  const consideredSamples = lastNonEmptyIdx >= 0 ? samples.slice(0, lastNonEmptyIdx + 1) : [];
+
   // Remove empty samples, trim, and deduplicate
-  const validSamples = Array.from(new Set(samples.map(s => (s || '').trim()).filter(Boolean)));
+  const validSamples = Array.from(new Set(consideredSamples.map(s => (s || '').trim()).filter(Boolean)));
   if (validSamples.length === 0) return 'Unknown';
 
-  // 1. Robust Int detection FIRST
-  if (validSamples.every(v => !isNaN(Number(v)) && Number.isInteger(Number(v)))) return 'Int';
+  // 0. ULTIMATE numeric check - if ALL samples are numeric, classify as numeric type
+  const allNumericSamples = validSamples.every(v => !isNaN(Number(v)) && v.trim() !== '');
+  if (allNumericSamples) {
+    const allIntegerSamples = validSamples.every(v => Number.isInteger(Number(v)));
+    if (allIntegerSamples) {
+      return 'Int';
+    } else {
+      return 'Float';
+    }
+  }
 
+  // 1. Robust Int detection FIRST - improved logic
+  const allNumeric = validSamples.every(v => !isNaN(Number(v)));
+  const allIntegers = validSamples.every(v => !isNaN(Number(v)) && Number.isInteger(Number(v)));
+  
+  if (allIntegers) {
+    return 'Int';
+  }
+  
   // 2. Robust Float detection
-  if (validSamples.every(v => !isNaN(Number(v))) && validSamples.some(v => !Number.isInteger(Number(v)))) return 'Float';
+  if (allNumeric && validSamples.some(v => !Number.isInteger(Number(v)))) {
+    return 'Float';
+  }
 
   // 3. Boolean detection
   const boolSet = new Set(['true', 'false', '0', '1']);
-  if (validSamples.every(v => boolSet.has(v.toLowerCase()))) return 'Bool';
+  if (validSamples.every(v => boolSet.has(v.toLowerCase()))) {
+    return 'Bool';
+  }
 
   // 4. Date detection
-  if (validSamples.every(v => !isNaN(Date.parse(v)))) return 'Date';
+  if (validSamples.every(v => !isNaN(Date.parse(v)))) {
+    return 'Date';
+  }
 
-  // 5. Fallback to name-based inference and confidence scoring
+  // 5. Enhanced numeric detection for mixed content
+  const numericCount = validSamples.filter(v => !isNaN(Number(v))).length;
+  const integerCount = validSamples.filter(v => !isNaN(Number(v)) && Number.isInteger(Number(v))).length;
+  
+  // If majority are numeric, prioritize numeric types
+  if (numericCount / validSamples.length >= 0.8) {
+    if (integerCount / validSamples.length >= 0.8) {
+      return 'Int';
+    } else {
+      return 'Float';
+    }
+  }
+
+  // 6. Fallback to name-based inference and confidence scoring
   const nameBasedType = inferTypeFromColumnName(columnName);
   if (nameBasedType) {
     // Validate the inferred type with sample data
@@ -239,7 +284,7 @@ export const detectColumnDataType = (samples: string[], columnName: string = '')
     }
   }
 
-  // If name-based inference fails or validation fails, fall back to content-based detection
+  // 7. Content-based detection with improved numeric handling
   if (samples.length === 0) return 'Unknown';
 
   // Count occurrences of each data type with confidence scoring
@@ -251,18 +296,20 @@ export const detectColumnDataType = (samples: string[], columnName: string = '')
     'Date': 1.3,
     'Date of birth': 1.3,
     'Date Time': 1.3,
-    'Float': 0.8,
+    'Int': 1.2, // Increased priority for Int
+    'Float': 1.1, // Increased priority for Float
     'Name': 1.2,
     'Address': 1.2,
-    'Int': 0.7,
     'String': 0.5
   };
+  
   validSamples.forEach(sample => {
     const type = detectDataType(sample);
     typeCounts[type] = (typeCounts[type] || 0) + 1;
     const priority = typePriority[type] || 1.0;
     typeConfidence[type] = (typeConfidence[type] || 0) + priority;
   });
+  
   let maxConfidence = 0;
   let mostConfidentType: DataType = 'Unknown';
   Object.entries(typeConfidence).forEach(([type, confidence]) => {
@@ -271,21 +318,29 @@ export const detectColumnDataType = (samples: string[], columnName: string = '')
       mostConfidentType = type as DataType;
     }
   });
+  
   const typePercentage = typeCounts[mostConfidentType] / validSamples.length;
   const allTypes = Object.keys(typeCounts);
+  
+  // 8. Enhanced numeric type handling
   if (allTypes.length === 1) {
     return allTypes[0] as DataType;
   }
+  
   if (allTypes.length === 2 && allTypes.includes('Int') && allTypes.includes('Float')) {
     return 'Float';
   }
+  
   if (allTypes.length === 1 && allTypes[0] === 'Bool') {
     return 'Bool';
   }
+  
+  // 9. Improved numeric detection for mixed content
   if (typePercentage < 0.6 || mostConfidentType === 'Unknown') {
     const numericTypes = ['Int', 'Float'];
     const totalNumeric = numericTypes.reduce((sum, type) => sum + (typeCounts[type as DataType] || 0), 0);
-    if (totalNumeric / validSamples.length > 0.7) {
+    
+    if (totalNumeric / validSamples.length > 0.6) { // Lowered threshold for better detection
       if (typeCounts['Float'] && typeCounts['Int']) {
         return 'Float';
       }
@@ -296,19 +351,40 @@ export const detectColumnDataType = (samples: string[], columnName: string = '')
         return 'Float';
       }
     }
+    
     if ((typeCounts['Bool'] || 0) / validSamples.length > 0.7) {
       return 'Bool';
     }
+    
     const dateTypes = ['Date', 'Date Time', 'Time', 'Date of birth'];
     const totalDates = dateTypes.reduce((sum, type) => sum + (typeCounts[type as DataType] || 0), 0);
     if (totalDates / validSamples.length > 0.5) {
       return 'Date';
     }
+    
+    // 10. Final numeric check before defaulting to String
+    const finalNumericCount = validSamples.filter(v => !isNaN(Number(v))).length;
+    if (finalNumericCount / validSamples.length > 0.5) {
+      const finalIntegerCount = validSamples.filter(v => !isNaN(Number(v)) && Number.isInteger(Number(v))).length;
+      if (finalIntegerCount / finalNumericCount > 0.8) {
+        return 'Int';
+      } else {
+        return 'Float';
+      }
+    }
+    
     return 'String';
   }
+  
   if (/credit.?card|debit.?card|card.?number|cc.?number|ccnum|payment.?card/i.test(columnName)) {
     return 'String';
   }
+  
+  // FINAL strict integer check: if all values match integer regex, return 'Int'
+  if (validSamples.length > 0 && validSamples.every(v => regexPatterns.int.test(v))) {
+    return 'Int';
+  }
+
   return mostConfidentType;
 };
 

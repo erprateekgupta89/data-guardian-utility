@@ -31,6 +31,7 @@ export interface ColumnInfo {
   dataType: DataType;
   sampleData: string;
   skip: boolean;
+  userModified?: boolean;
 }
 
 export interface FileData {

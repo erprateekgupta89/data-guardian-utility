@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import FileUpload from '@/components/FileUpload';
 import DataPreview from '@/components/DataPreview';
@@ -119,7 +118,7 @@ const Index = () => {
                 {fileData && (
                   <>
                     <DataPreview
-                      fileData={fileData}
+                      columns={columns}
                       onColumnsUpdate={handleColumnsUpdate}
                     />
                     <div className="mt-6">
