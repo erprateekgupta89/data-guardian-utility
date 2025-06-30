@@ -1483,8 +1483,31 @@ export const maskDataWithAIBatched = async (
                   value = maskDateTime(originalValue, column.dataType as any);
                   break;
                 case 'Int':
-                  // Always generate a valid integer (whole number)
-                  value = chance.integer({ min: 0, max: 10000 }).toString();
+                  // Strict: Only use integer-masking logic, no fallback to pattern/string
+                  {
+                    let origStr = originalValue.toString();
+                    let digitCount = origStr.replace(/^-?0*/, '').length; // Exclude sign and leading zeros for digit count
+                    let isNegative = origStr.startsWith('-');
+                    let hasLeadingZeros = /^-?0+[1-9]/.test(origStr);
+                    let min = Math.pow(10, digitCount - 1);
+                    let max = Math.pow(10, digitCount) - 1;
+                    if (digitCount === 1) { min = 0; }
+                    let maskedInt = 0;
+                    let attempts = 0;
+                    do {
+                      maskedInt = chance.integer({ min, max });
+                      if (isNegative) maskedInt = -Math.abs(maskedInt);
+                      attempts++;
+                    } while ((maskedInt.toString() === origStr.replace(/^0+/, '')) && attempts < 20);
+                    let maskedStr = Math.abs(maskedInt).toString();
+                    // Restore leading zeros if present in original
+                    if (hasLeadingZeros) {
+                      const origLen = origStr.replace(/^-/, '').length;
+                      maskedStr = maskedStr.padStart(origLen, '0');
+                    }
+                    if (isNegative) maskedStr = '-' + maskedStr;
+                    value = maskedStr;
+                  }
                   break;
                 case 'Float':
                   value = chance.floating({ min: 0, max: 10000, fixed: 2 }).toString();
@@ -1504,112 +1527,103 @@ export const maskDataWithAIBatched = async (
                 case 'Text':
                 case 'String':
                 default:
-                  // General columns: type- and pattern-aware masking
+                  // General columns: type- and pattern-aware masking, but never for Int
                   let maskedValue = '';
                   let attempts = 0;
                   const maxAttempts = 20;
-                  // Always honor explicit Int selection
-                  if (column.dataType === 'Int') {
-                    do {
-                      maskedValue = chance.integer({ min: 0, max: 10000 }).toString();
-                      attempts++;
-                    } while ((maskedValue === originalValue || isNaN(Number(maskedValue))) && attempts < maxAttempts);
-                    value = maskedValue;
-                  } else {
-                    const columnPattern = detectColumnPattern([originalValue]);
-                    do {
-                      if (columnPattern && columnPattern.confidence > 0.7) {
-                        // Use detected pattern for format-aware masking
-                        switch (columnPattern.pattern) {
-                          case 'email':
-                            maskedValue = chance.email();
-                            break;
-                          case 'phoneNumber':
-                            maskedValue = chance.phone();
-                            break;
-                          case 'pan':
-                            maskedValue = chance.string({ length: 5, pool: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' }) +
-                              chance.string({ length: 4, pool: '0123456789' }) +
-                              chance.string({ length: 1, pool: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' });
-                            break;
-                          case 'aadhaar':
-                            maskedValue = Array(3).fill(0)
-                              .map(() => chance.string({ length: 4, pool: '0123456789' }))
-                              .join(' ');
-                            break;
-                          case 'date':
-                            maskedValue = maskDateTime(originalValue, 'Date');
-                            break;
-                          case 'iban':
-                            maskedValue = chance.string({ length: 2, pool: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' }) +
-                              chance.string({ length: 2, pool: '0123456789' }) +
-                              chance.string({ length: 20, pool: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789' });
-                            break;
-                          case 'ssn':
-                            maskedValue = `${chance.string({ length: 3, pool: '0123456789' })}-` +
-                              `${chance.string({ length: 2, pool: '0123456789' })}-` +
-                              `${chance.string({ length: 4, pool: '0123456789' })}`;
-                            break;
-                          case 'ipv4':
-                            maskedValue = Array(4).fill(0)
-                              .map(() => chance.integer({ min: 0, max: 255 }))
-                              .join('.');
-                            break;
-                          case 'url':
-                            maskedValue = chance.url();
-                            break;
-                          case 'name':
-                            maskedValue = chance.name();
-                            break;
-                          case 'amount':
-                            const amount = chance.floating({ min: 100, max: 10000, fixed: 2 });
-                            maskedValue = `$${amount.toLocaleString()}`;
-                            break;
-                          case 'percentage':
-                            maskedValue = `${chance.integer({ min: 0, max: 100 })}%`;
-                            break;
-                          case 'creditCard':
-                            maskedValue = chance.cc();
-                            break;
-                          default:
-                            // Fallback to pattern-based generation
-                            maskedValue = randomStringFromPattern('alphanumeric', originalValue.length, originalValue);
-                        }
-                      } else {
-                        // Strictly match the selected data type
-                        switch (column.dataType as DataType) {
-                          case 'Float':
-                            maskedValue = chance.floating({ min: 0, max: 10000, fixed: 2 }).toString();
-                            break;
-                          case 'Bool':
-                            maskedValue = chance.bool().toString();
-                            break;
-                          case 'Date':
-                          case 'Date of birth':
-                          case 'Time':
-                          case 'Date Time':
-                            maskedValue = maskDateTime(originalValue, column.dataType as any);
-                            break;
-                          case 'Gender':
-                            maskedValue = chance.gender();
-                            break;
-                          case 'Company':
-                            maskedValue = chance.company();
-                            break;
-                          case 'Password':
-                            maskedValue = chance.string({ length: 10 });
-                            break;
-                          case 'Text':
-                          case 'String':
-                          default:
-                            maskedValue = randomStringFromPattern('alphanumeric', originalValue.length, originalValue);
-                            break;
-                        }
+                  const columnPattern = detectColumnPattern([originalValue]);
+                  do {
+                    if (columnPattern && columnPattern.confidence > 0.7) {
+                      // Use detected pattern for format-aware masking
+                      switch (columnPattern.pattern) {
+                        case 'email':
+                          maskedValue = chance.email();
+                          break;
+                        case 'phoneNumber':
+                          maskedValue = chance.phone();
+                          break;
+                        case 'pan':
+                          maskedValue = chance.string({ length: 5, pool: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' }) +
+                            chance.string({ length: 4, pool: '0123456789' }) +
+                            chance.string({ length: 1, pool: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' });
+                          break;
+                        case 'aadhaar':
+                          maskedValue = Array(3).fill(0)
+                            .map(() => chance.string({ length: 4, pool: '0123456789' }))
+                            .join(' ');
+                          break;
+                        case 'date':
+                          maskedValue = maskDateTime(originalValue, 'Date');
+                          break;
+                        case 'iban':
+                          maskedValue = chance.string({ length: 2, pool: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' }) +
+                            chance.string({ length: 2, pool: '0123456789' }) +
+                            chance.string({ length: 20, pool: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789' });
+                          break;
+                        case 'ssn':
+                          maskedValue = `${chance.string({ length: 3, pool: '0123456789' })}-` +
+                            `${chance.string({ length: 2, pool: '0123456789' })}-` +
+                            `${chance.string({ length: 4, pool: '0123456789' })}`;
+                          break;
+                        case 'ipv4':
+                          maskedValue = Array(4).fill(0)
+                            .map(() => chance.integer({ min: 0, max: 255 }))
+                            .join('.');
+                          break;
+                        case 'url':
+                          maskedValue = chance.url();
+                          break;
+                        case 'name':
+                          maskedValue = chance.name();
+                          break;
+                        case 'amount':
+                          const amount = chance.floating({ min: 100, max: 10000, fixed: 2 });
+                          maskedValue = `$${amount.toLocaleString()}`;
+                          break;
+                        case 'percentage':
+                          maskedValue = `${chance.integer({ min: 0, max: 100 })}%`;
+                          break;
+                        case 'creditCard':
+                          maskedValue = chance.cc();
+                          break;
+                        default:
+                          // Fallback to pattern-based generation
+                          maskedValue = randomStringFromPattern('alphanumeric', originalValue.length, originalValue);
                       }
-                      attempts++;
-                    } while (maskedValue === originalValue && attempts < maxAttempts);
-                    value = maskedValue;
-                  }
+                    } else {
+                      // Strictly match the selected data type
+                      switch (column.dataType as DataType) {
+                        case 'Float':
+                          maskedValue = chance.floating({ min: 0, max: 10000, fixed: 2 }).toString();
+                          break;
+                        case 'Bool':
+                          maskedValue = chance.bool().toString();
+                          break;
+                        case 'Date':
+                        case 'Date of birth':
+                        case 'Time':
+                        case 'Date Time':
+                          maskedValue = maskDateTime(originalValue, column.dataType as any);
+                          break;
+                        case 'Gender':
+                          maskedValue = chance.gender();
+                          break;
+                        case 'Company':
+                          maskedValue = chance.company();
+                          break;
+                        case 'Password':
+                          maskedValue = chance.string({ length: 10 });
+                          break;
+                        case 'Text':
+                        case 'String':
+                        default:
+                          maskedValue = randomStringFromPattern('alphanumeric', originalValue.length, originalValue);
+                          break;
+                      }
+                    }
+                    attempts++;
+                  } while (maskedValue === originalValue && attempts < maxAttempts);
+                  value = maskedValue;
                   break;
               }
             }
@@ -1781,6 +1795,8 @@ export const maskDataWithAIBatched = async (
     for (const [columnName, { pattern, confidence }] of Object.entries(columnPatterns)) {
       const column = columns.find(col => col.name === columnName);
       if (!column || column.skip) continue;
+      // --- FIX: Never apply pattern-based masking to Int columns ---
+      if (column.dataType === 'Int') continue;
 
       for (let rowIdx = 0; rowIdx < batch.length; rowIdx++) {
         const originalValue = batch[rowIdx][columnName];
@@ -2025,4 +2041,3 @@ export const maskDataWithAIBatched = async (
 
   return maskedRows;
 };
-
