@@ -16,6 +16,7 @@ const AZURE_OPENAI_API_KEY = "AEw7fZ3WwPe6u6Msudlam9bpTz7sSM8JiUhVHIDtpvSHpXn4GD
 const AZURE_OPENAI_ENDPOINT = "https://qatai.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2025-01-01-preview";
 const AZURE_OPENAI_API_VERSION = "2025-01-01-preview";
 const MAX_RETRIES = 3;
+let countryWiseAddressGenerated = false;
 
 // Regex patterns for common data types
 const REGEX_PATTERNS = {
@@ -45,7 +46,7 @@ function detectColumnPattern(values: string[]): { pattern: string; confidence: n
   for (const [pattern, regex] of Object.entries(REGEX_PATTERNS)) {
     const matches = nonEmptyValues.filter(v => new RegExp(regex).test(v));
     const confidence = matches.length / nonEmptyValues.length;
-    
+
     if (confidence > highestConfidence && confidence > 0.5) {
       highestConfidence = confidence;
       bestMatch = { pattern, confidence };
@@ -366,7 +367,7 @@ const UNIFORM_TEXT_PATTERNS = [
 // Function to detect constant and uniform text columns
 const detectConstantColumns = (data: Record<string, string>[], columns: ColumnInfo[]): Record<string, string> => {
   const constantColumns: Record<string, string> = {};
-  
+
   columns.forEach(column => {
     if (column.skip) return; // Skip columns marked for skipping
     const values = data.map(row => (row[column.name] || '').trim()).filter(Boolean);
@@ -391,34 +392,34 @@ const detectConstantColumns = (data: Record<string, string>[], columns: ColumnIn
 // Function to detect dual-label columns and their distribution
 const detectDualLabelColumns = (data: Record<string, string>[], columns: ColumnInfo[]): Record<string, { labels: string[], distribution: number[] }> => {
   const dualLabelColumns: Record<string, { labels: string[], distribution: number[] }> = {};
-  
+
   columns.forEach(column => {
     if (column.skip) return; // Skip columns marked for skipping
-    
+
     const values = data.map(row => (row[column.name] || '').trim()).filter(Boolean);
     if (values.length === 0) return; // Skip empty columns
-    
+
     // Get unique values and their counts
     const valueCounts = new Map<string, number>();
     values.forEach(value => {
       valueCounts.set(value, (valueCounts.get(value) || 0) + 1);
     });
-    
+
     // Check if this is a dual-label column (exactly 2 unique values)
     if (valueCounts.size === 2) {
       const labels = Array.from(valueCounts.keys());
       const total = values.length;
       const distribution = labels.map(label => valueCounts.get(label)! / total);
-      
+
       dualLabelColumns[column.name] = {
         labels,
         distribution
       };
-      
+
       console.log(`Column '${column.name}' is a dual-label column with values:`, labels, 'and distribution:', distribution);
     }
   });
-  
+
   return dualLabelColumns;
 };
 
@@ -426,46 +427,46 @@ const detectDualLabelColumns = (data: Record<string, string>[], columns: ColumnI
 const generateValueFromDistribution = (labels: string[], distribution: number[]): string => {
   const random = Math.random();
   let cumulative = 0;
-  
+
   for (let i = 0; i < distribution.length; i++) {
     cumulative += distribution[i];
     if (random <= cumulative) {
       return labels[i];
     }
   }
-  
+
   return labels[0]; // Fallback to first label
 };
 
 // Add sequential pattern detection function
 function detectSequentialPattern(values: string[]): { prefix: string; lastNumber: number } | null {
   if (values.length < 2) return null;
-  
+
   // Try to find a pattern like "abc1", "abc2", etc.
   const pattern = /^([a-zA-Z]+)(\d+)$/;
   const matches = values.map(v => v.match(pattern));
-  
+
   // Check if all values match the pattern
   if (!matches.every(m => m !== null)) return null;
-  
+
   // Extract prefix and numbers
   const firstMatch = matches[0]!;
   const prefix = firstMatch[1];
-  
+
   // Verify all values have the same prefix
   if (!matches.every(m => m![1] === prefix)) return null;
-  
+
   // Extract and sort numbers
   const numbers = matches.map(m => parseInt(m![2], 10)).sort((a, b) => a - b);
-  
+
   // Check if numbers are sequential
   const isSequential = numbers.every((num, index) => {
     if (index === 0) return true;
     return num === numbers[index - 1] + 1;
   });
-  
+
   if (!isSequential) return null;
-  
+
   return {
     prefix,
     lastNumber: numbers[numbers.length - 1]
@@ -479,21 +480,21 @@ export const generateWithOpenAI = async (prompt: string, type: DataType, count: 
   while (retryCount < MAX_RETRIES) {
     try {
       // const apiKey = validateApiKey();
-      
+
       // Add timestamp and random seed to make each prompt unique to avoid 304 responses
       const timestamp = new Date().toISOString();
       const randomSeed = Math.random().toString(36).substring(2, 15);
       // Add ASCII quote instruction to prompt
       const asciiQuoteInstruction = '\nUse only standard ASCII double quotes (\") for all JSON keys and values. Do NOT use curly quotes or any other characters.';
       const uniquePrompt = `${prompt}${asciiQuoteInstruction} (timestamp: ${timestamp}, seed: ${randomSeed})`;
-      
+
       const systemPrompt = `You are a synthetic test data generator for software development purposes.
                             Generate fictional, non-sensitive test data only. 
                             Return data as a JSON array of strings with no additional text.`;
-      
-/**{"role":"user","content":"Generate a integer value for OrderID. 
- * Generate 100 items. 
- * Return ONLY the requested values as plain text, one per line, nothing else. */
+
+      /**{"role":"user","content":"Generate a integer value for OrderID. 
+       * Generate 100 items. 
+       * Return ONLY the requested values as plain text, one per line, nothing else. */
 
       // `You are a data generation assistant that ONLY returns exact data items as requested.
       // Generate ${count} realistic ${type} items.
@@ -503,11 +504,18 @@ export const generateWithOpenAI = async (prompt: string, type: DataType, count: 
       // Each item in the array must be a simple string, not an object.
       // Current timestamp: ${timestamp}`
 
+      // Add detailed logs before the API call
+      console.log('[Azure OpenAI] About to send API request', {
+        prompt: uniquePrompt,
+        type,
+        count,
+        country
+      });
       // Generate a unique request ID for each request
       const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      
+
       console.log(`Making request ${requestId} for type: ${type}, timestamp: ${timestamp}`);
-      
+
       const response = await fetch(AZURE_OPENAI_ENDPOINT, {
         method: "POST",
         headers: {
@@ -525,15 +533,19 @@ export const generateWithOpenAI = async (prompt: string, type: DataType, count: 
             { role: "user", content: uniquePrompt }
           ],
           // Add randomness to the request params
-          temperature: 0.4 + Math.random() * 0.05, // Slight variation in temperature
+          temperature: 0.7 + Math.random() * 0.05, // Slight variation in temperature
           top_p: 0.6 + Math.random() * 0.1,     // Slight variation in top_p
           // frequency_penalty: 1.8 + Math.random() * 0.1,  // Small random frequency penalty    //
           presence_penalty: Math.random() * 0.1,   // Small random presence penalty
           // request_id: requestId                    // Include request ID in the body: NOT REQUIRED
-          max_tokens: 6000   // Increased max tokens to allow larger responses
+          max_tokens: 4000   // Increased max tokens to allow larger responses
         }),
       });
-      
+
+      // Log the raw fetch response status and headers
+      console.log(`[Azure OpenAI] Received HTTP ${response.status} ${response.statusText} for request ${requestId}`);
+      console.log('[Azure OpenAI] Response headers:', Array.from(response.headers.entries()));
+
       // Check for HTTP 304 status
       if (response.status === 304) {
         console.warn(`Received HTTP 304 response for request ${requestId}, retrying...`);
@@ -542,26 +554,33 @@ export const generateWithOpenAI = async (prompt: string, type: DataType, count: 
         await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
         continue;
       }
-      
+
       // Check for other error status codes
       if (!response.ok) {
         console.error(`API error: ${response.status} ${response.statusText}`);
         throw new Error(`Azure OpenAI API returned status ${response.status}`);
       }
-      
+
       const data = await response.json();
-      if (data.error) {
-        console.error("Azure OpenAI API error:", data.error);
-        throw new Error(data.error.message || "Azure OpenAI API error");
-      }
-      
-      console.log(`Successfully received response for request ${requestId}`);
-      
+      // Log the full raw Azure OpenAI API response
+      console.log('[Azure OpenAI API Raw Response]:', JSON.stringify(data, null, 2));
       const content = data.choices[0].message.content.trim();
-      const jsonMatch = content.match(/\[.*\]/s);
-      let jsonContent = jsonMatch ? jsonMatch[0] : content;
+      // Log the content string received from the model
+      console.log('[Azure OpenAI API Content String]:', content);
+      // Hardened object parser: always extract from first '{' to last '}'
+      let rawText = content;
+      let jsonText = '';
+      const objMatch = rawText.match(/\{[\s\S]*\}/);
+      if (objMatch) {
+        jsonText = objMatch[0];
+      } else {
+        // Try to recover: if it looks like a fragment, wrap in braces
+        if (!rawText.trim().startsWith('{')) rawText = '{' + rawText;
+        if (!rawText.trim().endsWith('}')) rawText = rawText + '}';
+        jsonText = rawText;
+      }
       // Sanitize curly quotes and common LLM issues
-      let sanitized = jsonContent
+      let sanitized = jsonText
         .replace(/[""]/g, '"') // curly double quotes
         .replace(/['']/g, "'") // curly single quotes
         .replace(/,\s*([\]}])/g, '$1') // trailing commas
@@ -569,9 +588,12 @@ export const generateWithOpenAI = async (prompt: string, type: DataType, count: 
         .replace(/\u2018|\u2019/g, "'");
       try {
         const parsedItems = JSON.parse(sanitized);
-        
+        // Log the parsed JSON object/array
+        console.log('[Azure OpenAI API Parsed JSON]:', parsedItems);
         if (Array.isArray(parsedItems)) {
           return parsedItems.slice(0, count);
+        } else if (typeof parsedItems === 'object' && parsedItems !== null) {
+          return parsedItems;
         } else {
           return Array(count).fill(content);
         }
@@ -932,10 +954,10 @@ export const maskDataWithAIBatched = async (
 
   // Detect constant columns
   const constantColumns = detectConstantColumns(fileData.data, columns);
-  
+
   // Detect dual-label columns
   const dualLabelColumns = detectDualLabelColumns(fileData.data, columns);
-  
+
   // Detect column patterns
   const columnPatterns: Record<string, { pattern: string; confidence: number }> = {};
   for (const column of columns) {
@@ -971,10 +993,10 @@ export const maskDataWithAIBatched = async (
   // Detect sequential patterns in each column
   for (const column of columns) {
     if (column.skip) continue;
-    
+
     const values = fileData.data.map(row => row[column.name]?.toString() || '');
     const pattern = detectSequentialPattern(values);
-    
+
     if (pattern) {
       sequentialPatterns[column.name] = {
         prefix: pattern.prefix,
@@ -1047,6 +1069,8 @@ export const maskDataWithAIBatched = async (
       if (country) countryCounts[country] = (countryCounts[country] || 0) + 1;
     });
     console.log('[Masking Info] Detected Country Counts:', countryCounts);
+    console.log('trimmedRows.length:', trimmedRows.length);
+    console.log('countryCounts:', countryCounts);
 
     // --- Normalization for batching logic ---
     const countryValuesRaw = effectiveCountryValues;
@@ -1067,64 +1091,116 @@ export const maskDataWithAIBatched = async (
       countryRowIndices[c].push(i);
     }
 
-    // For each normalized country, generate the exact number of addresses needed
-    for (const normCountry of uniqueCountriesNorm) {
-      const rowIndices = countryRowIndices[normCountry];
-      const addressCount = rowIndices.length;
-      if (addressCount === 0) continue;
-      const displayCountry = countryMap[normCountry];
-      const prompt = `Generate ${addressCount} unique, realistic postal addresses for software testing in ${displayCountry}. Each address must include: street (with house number), city, state, postal code, and country — all in correct local format. Return only a valid JSON array of exactly ${addressCount} strings, with no extra text or metadata.`;
-      let addresses: string[] = [];
-      let retries = 0;
-      while (addresses.length < addressCount && retries < MAX_RETRIES) {
-        try {
-          const needed = addressCount - addresses.length;
-          const result = await generateWithOpenAI(prompt.replace(`${addressCount}`, `${needed}`), 'Address', needed, displayCountry);
-          addresses = addresses.concat(result);
-        } catch (error) {
-          console.error(`[Country Distribution] Failed to generate addresses for ${displayCountry} (retry ${retries + 1}):`, error);
-          addresses.push(`123 Main St, Default City, Default State, 12345, ${displayCountry}`);
-        }
-        // Only retry if any postal code is blank/missing
-        let hasBlankPostal = false;
-        for (let i = 0; i < addresses.length; i++) {
-          let addr = addresses[i];
-          let postal = '';
-          let parsed = false;
-          try {
-            const obj = JSON.parse(addr);
-            if (typeof obj === 'object' && obj !== null) {
-              postal = obj.postal || obj.zip || obj['postal code'] || '';
-              parsed = true;
-            }
-          } catch {}
-          if (!parsed) {
-            const parts = addr.split(',').map(s => s.trim());
-            if (parts.length >= 5) {
-              postal = parts[parts.length - 2];
-            } else if (parts.length === 4) {
-              postal = '';
-            } else if (parts.length === 3) {
-              postal = '';
-            } else {
-              postal = '';
-            }
-            if (!postal) {
-              const postalMatch = addr.match(/\b\d{5,6}\b/);
-              if (postalMatch) postal = postalMatch[0];
-            }
-          }
-          if (!postal || !postal.trim()) {
-            hasBlankPostal = true;
-            break;
-          }
-        }
-        if (!hasBlankPostal) break;
-        retries++;
+    // --- Single API call for all countries (<=100 rows) ---
+    if (trimmedRows.length <= 100) {
+      // Build prompt
+      let prompt = 'Generate the following number of unique, realistic postal addresses for software testing:';
+      Object.entries(countryCounts).forEach(([country, count]) => {
+        prompt += `\n- ${count} for ${country}`;
+      });
+      prompt += '\nEach address must include: street (with house number), city, state, postal code, and country — all in correct local format.';
+      prompt += '\nReturn a single JSON object where each key is the country and its value is an array of exactly N address strings.';
+      prompt += '\nDo not wrap the object in an array and do not add extra keys.';
+      prompt += '\nExample:';
+      prompt += '\n{\n  "India": ["...","...","..."],\n  "Canada": ["...","..."],\n  "Australia": ["...","...","...","...","..."]\n}';
+      // Make a single API call
+      const totalAddresses = Object.values(countryCounts).reduce((a, b) => a + b, 0);
+      let combinedRequestDispatched = false;
+      if (!combinedRequestDispatched) {
+        console.log('Dispatching combined request…');
+        combinedRequestDispatched = true;
       }
-      // After all retries, keep blank if still missing
-      countryAddressPool[displayCountry] = addresses.slice(0, addressCount);
-      countryAddressCounters[displayCountry] = 0;
+      console.log('[Azure OpenAI] Making single API call for all countries:', countryCounts);
+      let apiResponse;
+      try {
+        apiResponse = await generateWithOpenAI(prompt, 'Address', totalAddresses, '');
+        // Hardened parser: extract first '{' to last '}', try/catch JSON.parse, log raw text on failure
+        let rawText = Array.isArray(apiResponse) ? apiResponse.join('') : (typeof apiResponse === 'string' ? apiResponse : JSON.stringify(apiResponse));
+        let jsonText = '';
+        const objMatch = rawText.match(/\{[\s\S]*\}/);
+        if (objMatch) {
+          jsonText = objMatch[0];
+        } else {
+          // Try to recover: if it looks like a fragment, wrap in braces
+          if (!rawText.trim().startsWith('{')) rawText = '{' + rawText;
+          if (!rawText.trim().endsWith('}')) rawText = rawText + '}';
+          jsonText = rawText;
+        }
+        let parsed = null;
+        try {
+          parsed = JSON.parse(jsonText);
+        } catch (e) {
+          console.error('[Azure OpenAI] Failed to parse JSON object. Raw text:', rawText, 'Attempted JSON:', jsonText);
+          throw new Error('Failed to parse address JSON object from OpenAI response');
+        }
+        // Fill countryAddressPool with key normalization
+        Object.entries(countryCounts).forEach(([country, count]) => {
+          // Normalize keys: match ignoring case and whitespace
+          const matchEntry = Object.entries(parsed).find(([k]) => k.trim().toLowerCase() === country.trim().toLowerCase());
+          const arr: string[] | undefined = matchEntry ? (Array.isArray(matchEntry[1]) ? matchEntry[1] : undefined) : undefined;
+          if (!Array.isArray(arr) || arr.length !== count) {
+            console.warn(`[Azure OpenAI] Address count mismatch for ${country}: expected ${count}, got ${arr ? arr.length : 0}`);
+            countryAddressPool[country] = Array(count).fill(`123 Main St, Default City, Default State, 12345, ${country}`);
+          } else {
+            countryAddressPool[country] = arr;
+          }
+          countryAddressCounters[country] = 0;
+        });
+        // Log the keys and values after populating the pool
+        console.log('[Azure OpenAI] Parsed object keys:', Object.keys(parsed));
+        console.log('[Azure OpenAI] countryCounts keys:', Object.keys(countryCounts));
+        console.log('[Azure OpenAI] countryAddressPool:', countryAddressPool);
+        console.log('[Azure OpenAI] Single API call response processed:', Object.keys(parsed));
+      } catch (err) {
+        console.error('[Azure OpenAI] Single API call failed:', err);
+        // Fallback: fill with dummy addresses
+        Object.entries(countryCounts).forEach(([country, count]) => {
+          countryAddressPool[country] = Array(count).fill(`123 Main St, Default City, Default State, 12345, ${country}`);
+          countryAddressCounters[country] = 0;
+        });
+      }
+      countryWiseAddressGenerated = true;
+    } else {
+      // --- Proportional logic for >100 rows (unchanged) ---
+      for (const normCountry of uniqueCountriesNorm) {
+        const rowIndices = countryRowIndices[normCountry];
+        const addressCount = rowIndices.length;
+        if (addressCount === 0) continue;
+        const displayCountry = countryMap[normCountry];
+        const prompt = `Generate ${addressCount} unique, realistic postal addresses for software testing in ${displayCountry}. Each address must include: street (with house number), city, state, postal code, and country — all in correct local format. Return only a valid JSON array of exactly ${addressCount} strings, with no extra text or metadata.`;
+        let addresses: string[] = [];
+        let retries = 0;
+        let valid = false;
+        while (!valid && retries < MAX_RETRIES) {
+          try {
+            const needed = addressCount - addresses.length;
+            const result = await generateWithOpenAI(prompt.replace(`${addressCount}`, `${needed}`), 'Address', needed, displayCountry);
+            addresses = addresses.concat(result);
+            // Validate the batch: must have correct number and all non-blank
+            if (isValidAddressBatch(addresses, addressCount)) {
+              valid = true;
+            } else {
+              // If not valid, clear addresses and retry
+              addresses = [];
+              retries++;
+              console.warn(`[Country Distribution] Invalid address batch for ${displayCountry}, retrying (${retries})...`);
+              continue;
+            }
+          } catch (error) {
+            console.error(`[Country Distribution] Failed to generate addresses for ${displayCountry} (retry ${retries + 1}):`, error);
+            addresses = [];
+            retries++;
+            continue;
+          }
+        }
+        // After all retries, if still not valid, fill with blanks or fallback
+        if (!valid) {
+          addresses = Array(addressCount).fill(`123 Main St, Default City, Default State, 12345, ${displayCountry}`);
+        }
+        countryAddressPool[displayCountry] = addresses.slice(0, addressCount);
+        countryAddressCounters[displayCountry] = 0;
+      }
+      countryWiseAddressGenerated = false;
     }
   }
 
@@ -1144,7 +1220,7 @@ export const maskDataWithAIBatched = async (
       for (let rowIdx = 0; rowIdx < batch.length; rowIdx++) {
         batchMaskedRows[rowIdx][columnName] = generateValueFromDistribution(labels, distribution);
       }
-    } 
+    }
 
     // Handle sequential patterns
     for (const [columnName, pattern] of Object.entries(sequentialPatterns)) {
@@ -1157,8 +1233,8 @@ export const maskDataWithAIBatched = async (
     }
 
     // Handle geo-specific columns first
-    const geoFields = columns.filter(col => 
-      GEO_FIELD_TYPES.includes(col.dataType as any) && 
+    const geoFields = columns.filter(col =>
+      GEO_FIELD_TYPES.includes(col.dataType as any) &&
       !constantColumns[col.name] && // Skip if it's a constant column
       !dualLabelColumns[col.name] && // Skip if it's a dual-label column
       !sequentialPatterns[col.name] // Skip if it's a sequential pattern column
@@ -1205,18 +1281,126 @@ export const maskDataWithAIBatched = async (
       }
       if (isGeoField(column)) {
         if (batchIdx === 0) {
+          // --- FIX: Skip redundant first-batch address generation if country-wise addresses were already generated ---
+          if (column.dataType === 'Address' && countryWiseAddressGenerated) {
+            // Use countryAddressPool to fill geoFirstBatch for the first batch
+            const addressArr: string[] = [];
+            const cityArr: string[] = [];
+            const stateArr: string[] = [];
+            const postalArr: string[] = [];
+            const countryArr: string[] = [];
+            for (let rowIdx = 0; rowIdx < batch.length; rowIdx++) {
+              const row = batch[rowIdx];
+              const countryValue = row[countryColName]?.trim();
+              const addresses = countryAddressPool[countryValue] || [];
+              if (!Array.isArray(addresses) || addresses.length === 0) {
+                console.error(`[Azure OpenAI] No addresses found for country: '${countryValue}'. countryAddressPool:`, countryAddressPool);
+              }
+              const addr = addresses[countryAddressCounters[countryValue]++] || '';
+              // Parse address into components (street, city, state, postal, country)
+              let street = '', city = '', state = '', postal = '', country = '';
+              let parsed = false;
+              try {
+                const obj = JSON.parse(addr);
+                if (typeof obj === 'object' && obj !== null) {
+                  street = obj.street || '';
+                  city = obj.city || '';
+                  state = obj.state || '';
+                  postal = obj.postal || obj.zip || obj['postal code'] || '';
+                  country = obj.country || countryValue;
+                  parsed = true;
+                }
+              } catch { }
+              if (!parsed) {
+                const parts = addr.split(',').map(s => s.trim());
+                if (parts.length >= 5) {
+                  street = parts.slice(0, parts.length - 4).join(', ');
+                  city = parts[parts.length - 4];
+                  state = parts[parts.length - 3];
+                  postal = parts[parts.length - 2];
+                  country = parts[parts.length - 1];
+                } else if (parts.length === 4) {
+                  street = parts[0];
+                  city = parts[1];
+                  state = parts[2];
+                  postal = '';
+                  country = parts[3];
+                } else if (parts.length === 3) {
+                  street = parts[0];
+                  city = parts[1];
+                  state = '';
+                  postal = '';
+                  country = parts[2];
+                } else {
+                  street = addr;
+                  city = '';
+                  state = '';
+                  postal = '';
+                  country = countryValue;
+                }
+                if (!postal) {
+                  const postalMatch = addr.match(/\b\d{5,6}\b/);
+                  if (postalMatch) postal = postalMatch[0];
+                }
+              }
+              addressArr.push(street);
+              cityArr.push(city);
+              stateArr.push(state);
+              postalArr.push(postal);
+              countryArr.push(country);
+            }
+
+            // // Validation: ensure all 100 address values are unique and non-blank
+            // const addressSet = new Set(addressArr);
+            // if (addressArr.length !== addressSet.size || addressArr.includes('')) {
+            //   console.error('[AI Masking] Address mapping failure in first batch:', addressArr);
+            // }
+
+            geoFirstBatch['Address'] = addressArr.slice();
+            geoFirstBatch['City'] = cityArr.slice();
+            geoFirstBatch['State'] = stateArr.slice();
+            geoFirstBatch['Postal Code'] = postalArr.slice();
+            geoFirstBatch['Country'] = countryArr.slice();
+            geoReference['Address'] = addressArr;
+            geoReference['City'] = cityArr;
+            geoReference['State'] = stateArr;
+            geoReference['Postal Code'] = postalArr;
+            geoReference['Country'] = countryArr;
+            // Strict assignment: map each value to its exact row
+            for (let rowIdx = 0; rowIdx < batch.length; rowIdx++) {
+              batchMaskedRows[rowIdx]['Address'] = addressArr[rowIdx];
+              batchMaskedRows[rowIdx]['City'] = cityArr[rowIdx];
+              batchMaskedRows[rowIdx]['State'] = stateArr[rowIdx];
+              batchMaskedRows[rowIdx]['Postal Code'] = postalArr[rowIdx];
+              batchMaskedRows[rowIdx]['Country'] = countryArr[rowIdx];
+            }
+            continue;
+          }
+          // --- END FIX ---
           // Strict mapping: For the first batch, geo fields must be directly and only from AI, no mutation or fallback.
           // Only trigger the unified address prompt for the Address column
           if (column.dataType === 'Address' && !geoFirstBatch['Address']) {
-            let prompt = `Generate ${batch.length} unique, realistic postal addresses for software testing in ${consistentCountry}. Each address must include: street, city, state, postal code, and country — all in correct local format. Ensure postal codes match their corresponding city and state. Return only a valid JSON array of exactly ${batch.length} strings, with no extra text or metadata.`;
+            let prompt = `Generate ${batch.length} unique, realistic, and complete fictional postal addresses for software testing in ${consistentCountry}. Each address must include: street, city, region/state (if applicable), postal code, and country — all in the correct local format. Ensure that postal codes correspond correctly to their respective city and state.
+
+                          Return only a valid JSON array of exactly ${batch.length} address strings, with no extra explanation, headers, or metadata — just the array.
+
+                          Example format:
+                            [ 
+                              "123 Main Street, New York, NY 10001, United States",
+                              "45 Baker Street, London SW1A 1AA, United Kingdom",
+                              "Rua das Flores, 123, São Paulo, SP 01001-000, Brazil"
+                            ]`; 
+
             // --- Incremental retry mechanism for partially successful responses ---
             let aiResult: string[] = Array(batch.length).fill('');
             let attempts = 0;
             let missingIndices = Array.from({ length: batch.length }, (_, i) => i);
             const isValid = (val: string, idx: number, arr: string[]) => typeof val === 'string' && val.trim().length > 0 && arr.indexOf(val) === idx;
+            // IMPORTANT: This while loop is sequential. Each API call for missing indices is made only after the previous one completes.
             while (missingIndices.length > 0 && attempts < 3) {
               const countToFetch = missingIndices.length;
               const fetchPrompt = prompt.replace(`${batch.length}`, `${countToFetch}`);
+              // SEQUENTIAL: This await ensures the next API call only starts after the previous one completes.
               const fetchResult = await generateWithOpenAI(fetchPrompt, column.dataType, countToFetch, consistentCountry);
               // Debug: Log raw AI output for this fetch
               console.debug(`[AI Masking] Raw AI address output (attempt ${attempts + 1}):`, fetchResult);
@@ -1265,7 +1449,7 @@ export const maskDataWithAIBatched = async (
                   country = obj.country || consistentCountry;
                   parsed = true;
                 }
-              } catch {}
+              } catch { }
               if (!parsed) {
                 // Fallback: parse as comma-separated string
                 const parts = addr.split(',').map(s => s.trim());
@@ -1376,7 +1560,7 @@ export const maskDataWithAIBatched = async (
           // Infer format from the original value
           const originalValue = row[column.name] || '';
           const { pattern, length, type } = inferFormatPattern(originalValue);
-          
+
           // Step 3: Handle percentage-based columns
           const columnNameLower = column.name.toLowerCase();
           const isPercentageColumn = /%|percent|percentage/i.test(columnNameLower);
@@ -1687,7 +1871,7 @@ export const maskDataWithAIBatched = async (
                 let attempts = 0;
                 do {
                   const prefix = chance.string({ length: chance.integer({ min: 3, max: 6 }), pool: 'abcdefghijklmnopqrstuvwxyz' });
-                  const suffix = chance.string({ length: 10, pool: '0123456789'});
+                  const suffix = chance.string({ length: 10, pool: '0123456789' });
                   username = `${prefix}${suffix}`;
                   attempts++;
                   if (attempts > 100) {
@@ -1925,7 +2109,7 @@ export const maskDataWithAIBatched = async (
 
     // Add the masked rows from this batch to the overall result
     maskedRows = maskedRows.concat(batchMaskedRows);
-    
+
     // Update progress after each batch
     if (onProgress) {
       const progress = Math.round((maskedRows.length / allRows.length) * 100);
@@ -1968,7 +2152,7 @@ export const maskDataWithAIBatched = async (
             country = obj.country || rowCountry;
             parsed = true;
           }
-        } catch {}
+        } catch { }
         if (!parsed) {
           const parts = addr.split(',').map(s => s.trim());
           if (parts.length >= 5) {
@@ -2041,3 +2225,12 @@ export const maskDataWithAIBatched = async (
 
   return maskedRows;
 };
+
+// Helper to validate a batch of addresses (must be correct length and non-blank)
+function isValidAddressBatch(addresses: string[], expectedCount: number): boolean {
+  if (!Array.isArray(addresses) || addresses.length !== expectedCount) return false;
+  for (const addr of addresses) {
+    if (!addr || typeof addr !== 'string' || !addr.trim()) return false;
+  }
+  return true;
+}
