@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Check, Info } from 'lucide-react';
 import { ColumnInfo, FileData, MaskingConfig } from '@/types';
@@ -33,12 +32,6 @@ import { Progress } from '@/components/ui/progress';
 import React from 'react';
 const chance = new Chance();
 
-interface MaskingOptionsProps {
-  fileData: FileData;
-  columns: ColumnInfo[];
-  onDataMasked: (maskedData: Record<string, string>[], config: MaskingConfig) => void;
-}
-
 // List of countries for the multi-select dropdown
 const countries = [
   "United States", "Canada", "United Kingdom", "Australia", "Germany", 
@@ -48,6 +41,12 @@ const countries = [
   "Belgium", "Portugal", "Greece", "Ireland", "New Zealand", "Singapore", 
   "Malaysia", "Thailand", "Indonesia", "Philippines", "Vietnam", "Turkey"
 ];
+
+interface MaskingOptionsProps {
+  fileData: FileData;
+  columns: ColumnInfo[];
+  onDataMasked: (maskedData: Record<string, string>[], config: MaskingConfig) => void;
+}
 
 const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps) => {
   const { toast } = useToast();
@@ -81,29 +80,15 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
         selectedCountries: [selectedCountry]
       };
       
-      // Check if AI masking is enabled
-      // const useAI = localStorage.getItem('use_ai') === 'true';
-      // const apiKey = localStorage.getItem('azure_openai_api_key') ;
-
-      // if (useAI && !apiKey) {
-      //   toast({
-      //     title: "API Key Required",
-      //     description: "Please enter your OpenAI API key in settings to use AI masking.",
-      //     variant: "destructive",
-      //   });
-      //   setIsProcessing(false);
-      //   return;
-      // }
-
       // Process data masking
       setTimeout(async () => {
         try {
           const maskedData = await maskDataSet(
-            fileData,
+            fileData.data,
             columns,
-            { useCountryDropdown, selectedCountries: [selectedCountry] },
-            (p) => setProgress(p)
+            { useCountryDropdown, selectedCountries: [selectedCountry] }
           );
+          setProgress(100);
           onDataMasked(maskedData, maskingConfig);
         } catch (error) {
           console.error('Error during masking:', error);
@@ -243,32 +228,6 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
                 </div>
               </div>
             )}
-
-            {/* Preserve Format Option
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Label htmlFor="preserveFormat" className="cursor-pointer">
-                  Preserve Data Format
-                </Label>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div>
-                        <Info className="h-4 w-4 text-gray-400" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      <p>When enabled, masking will maintain the original format of data (e.g., keeping the same number of characters, preserving special characters). Disable for fully randomized data.</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              <Switch
-                id="preserveFormat"
-                checked={preserveFormat}
-                onCheckedChange={setPreserveFormat}
-              />
-            </div> */}
           </div>
           
           <div className="pt-2 flex justify-center">
