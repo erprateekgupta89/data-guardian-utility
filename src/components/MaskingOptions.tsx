@@ -1,9 +1,9 @@
+
 import { useState } from 'react';
 import { Check, Info } from 'lucide-react';
 import { ColumnInfo, FileData, MaskingConfig } from '@/types';
 import { maskDataSet } from '@/utils/masking';
-// import { maskDataWithAI } from '@/utils/aiMasking';
-import { maskDataWithAIBatched } from '@/utils/aiMasking';
+import { maskDataWithAI } from '@/utils/aiMasking';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -98,7 +98,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
       // Process data masking
       setTimeout(async () => {
         try {
-          const maskedData = await maskDataWithAIBatched(
+          const maskedData = await maskDataSet(
             fileData,
             columns,
             { useCountryDropdown, selectedCountries: [selectedCountry] },
