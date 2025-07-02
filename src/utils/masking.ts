@@ -1,7 +1,7 @@
-
 import { ColumnInfo, DataType } from "@/types";
 import { randomString, randomNumber, getUniqueValues, getRandomSample } from "./maskingHelpers";
 import { maskPersonalInfo, maskLocationData, maskDateTime } from "./dataTypeMasking";
+import { detectColumnDataType } from "./dataDetection";
 
 // Mask data based on its type and original format
 export const maskData = (value: string, dataType: DataType, format?: string, constantValues?: string[]): string => {
@@ -18,7 +18,7 @@ export const maskData = (value: string, dataType: DataType, format?: string, con
       if (parts.length !== 2) return `user_${randomString(5)}@example.com`;
       const domainParts = parts[1].split('.');
       const tld = domainParts.pop();
-      return `user_${randomString(5)}@${randomString(5)}.${tld}`;
+      return `user_${randomString(5).toLowerCase()}@${randomString(5).toLowerCase()}.${tld}`;
     }
     
     case 'Phone Number': {
@@ -54,8 +54,6 @@ export const maskData = (value: string, dataType: DataType, format?: string, con
     }
     
     case 'Name':
-    case 'First Name':
-    case 'Last Name':
       return maskPersonalInfo(value, dataType);
     
     case 'Address':
@@ -145,6 +143,22 @@ export const maskDataSet = (
   columns: ColumnInfo[],
   options?: MaskingOptions
 ): Record<string, string>[] => {
+  // --- Pre-masking: Re-infer and correct column data types ---
+  columns.forEach(col => {
+    if (
+      col.dataType === 'Postal Code' ||
+      col.dataType === 'Unknown' ||
+      col.dataType === 'String' ||
+      col.dataType === 'Int'
+    ) {
+      const samples = data.map(row => row[col.name]).filter(Boolean).slice(0, 20);
+      const inferred = detectColumnDataType(samples, col.name);
+      if (inferred === 'Date' || inferred === 'Date of birth' || inferred === 'Date Time') {
+        col.dataType = inferred;
+      }
+    }
+  });
+  
   // Use all the data instead of just a sample
   const workingData = data;
   

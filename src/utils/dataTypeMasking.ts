@@ -3,7 +3,7 @@ import { DataType } from "@/types";
 import { randomString, randomNumber } from "./maskingHelpers";
 
 // Personal Information masking
-const maskPersonalInfo = (value: string, dataType: "Name" | "First Name" | "Last Name"): string => {
+const maskPersonalInfo = (value: string, dataType: "Name"): string => {
   const names = [
     'John', 'Jane', 'Michael', 'Emily', 'David', 'Sarah', 'Robert', 'Jessica',
     'William', 'Jennifer', 'Richard', 'Linda', 'Thomas', 'Patricia', 'Daniel',
@@ -16,7 +16,7 @@ const maskPersonalInfo = (value: string, dataType: "Name" | "First Name" | "Last
     'Harris', 'Martin', 'Thompson', 'Garcia', 'Martinez', 'Robinson'
   ];
 
-  if (dataType === 'First Name' || !value.includes(' ')) {
+  if (dataType === 'Name' || !value.includes(' ')) {
     return names[Math.floor(Math.random() * names.length)];
   }
   

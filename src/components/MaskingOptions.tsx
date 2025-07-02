@@ -1,9 +1,9 @@
-
 import { useState } from 'react';
 import { Check, Info } from 'lucide-react';
 import { ColumnInfo, FileData, MaskingConfig } from '@/types';
 import { maskDataSet } from '@/utils/masking';
-import { maskDataWithAI } from '@/utils/aiMasking';
+// import { maskDataWithAI } from '@/utils/aiMasking';
+import { maskDataWithAIBatched } from '@/utils/aiMasking';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -28,6 +28,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Check as CheckIcon, ChevronsUpDown } from "lucide-react";
+import Chance from 'chance';
+import { Progress } from '@/components/ui/progress';
+import React from 'react';
+const chance = new Chance();
 
 interface MaskingOptionsProps {
   fileData: FileData;
@@ -51,6 +55,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
   const [preserveFormat, setPreserveFormat] = useState(true);
   const [createTableSQL, setCreateTableSQL] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [progress, setProgress] = useState(0);
   
   // Check if a country column exists in the data
   const hasCountryColumn = columns.some(
@@ -58,51 +63,47 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
   );
   
   // Set default use dropdown country preference
-  const [useCountryDropdown, setUseCountryDropdown] = useState(true);
+  const [useCountryDropdown, setUseCountryDropdown] = useState(hasCountryColumn);
   
-  // Selected countries for the multi-select
-  const [selectedCountries, setSelectedCountries] = useState<string[]>([
-    "United States", "United Kingdom", "Canada", "Australia"
-  ]);
+  // Selected country for the single-select
+  const [selectedCountry, setSelectedCountry] = useState<string>("India");
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const handleApplyMasking = async () => {
     setIsProcessing(true);
-    
+    setProgress(0);
     try {
-      // Create config object
       const maskingConfig: MaskingConfig = {
         preserveFormat,
         createTableSQL,
         tableName,
         useCountryDropdown,
-        selectedCountries
+        selectedCountries: [selectedCountry]
       };
       
       // Check if AI masking is enabled
-      const useAI = localStorage.getItem('use_ai') === 'true';
-      const apiKey = useAI ? localStorage.getItem('azure_openai_api_key') : null;
+      // const useAI = localStorage.getItem('use_ai') === 'true';
+      // const apiKey = localStorage.getItem('azure_openai_api_key') ;
 
-      if (useAI && !apiKey) {
-        toast({
-          title: "API Key Required",
-          description: "Please enter your OpenAI API key in settings to use AI masking.",
-          variant: "destructive",
-        });
-        setIsProcessing(false);
-        return;
-      }
+      // if (useAI && !apiKey) {
+      //   toast({
+      //     title: "API Key Required",
+      //     description: "Please enter your OpenAI API key in settings to use AI masking.",
+      //     variant: "destructive",
+      //   });
+      //   setIsProcessing(false);
+      //   return;
+      // }
 
       // Process data masking
       setTimeout(async () => {
         try {
-          const maskedData = useAI 
-            ? await maskDataWithAI(fileData, columns)
-            : maskDataSet(fileData.data, columns, { 
-                useCountryDropdown, 
-                selectedCountries 
-              });
-            
+          const maskedData = await maskDataWithAIBatched(
+            fileData,
+            columns,
+            { useCountryDropdown, selectedCountries: [selectedCountry] },
+            (p) => setProgress(p)
+          );
           onDataMasked(maskedData, maskingConfig);
         } catch (error) {
           console.error('Error during masking:', error);
@@ -127,152 +128,174 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
   };
 
   return (
-    <Card className="w-full">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-lg font-medium">
-          <div className="flex items-center">
-            Masking Options
-          </div>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-4">
-          {/* Country Preference Option */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Label htmlFor="countryPreference" className="cursor-pointer">
-                Country Selection
-              </Label>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div>
-                      <Info className="h-4 w-4 text-gray-400" />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    <p>
-                      {hasCountryColumn 
-                        ? "If enabled, country preference will be applied based on the selected countries in the dropdown. If disabled, it uses the column data." 
-                        : "Country preference will be applied based on the selected countries in the dropdown as no country column is present in the uploaded file."}
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+    <>
+      {/* Full-screen loading overlay when masking is in progress */}
+      {isProcessing && (
+        <div
+          role="alert"
+          aria-busy="true"
+          aria-live="assertive"
+          tabIndex={-1}
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm transition-opacity duration-300"
+          style={{ pointerEvents: 'all' }}
+        >
+          <div className="flex flex-col items-center">
+            <svg className="animate-spin h-10 w-10 text-white mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <div className="text-white text-lg font-semibold mb-2">Masking in progress...</div>
+            <div className="text-white text-sm">Please wait while your data is being masked.</div>
+            <div className="mt-4 w-48">
+              <Progress value={progress} />
+              <div className="text-xs text-center mt-1 text-white">{progress}%</div>
             </div>
-            <Switch
-              id="countryPreference"
-              checked={useCountryDropdown}
-              onCheckedChange={setUseCountryDropdown}
-              disabled={!hasCountryColumn}
-            />
           </div>
-
-          {/* Country Selection Dropdown - Show only if country preference is enabled */}
-          {useCountryDropdown && (
-            <div className="space-y-2">
-              <Label>Select Countries</Label>
-              <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-between"
-                    onClick={() => setDropdownOpen(!dropdownOpen)}
-                  >
-                    {selectedCountries.length > 0
-                      ? `${selectedCountries.length} countries selected`
-                      : "Select countries..."}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-80" align="start">
-                  <DropdownMenuLabel>Select Countries</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <div className="max-h-64 overflow-y-auto">
-                    {countries.map((country) => (
-                      <DropdownMenuCheckboxItem
-                        key={country}
-                        checked={selectedCountries.includes(country)}
-                        onCheckedChange={(checked) => {
-                          setSelectedCountries(
-                            checked
-                              ? [...selectedCountries, country]
-                              : selectedCountries.filter(c => c !== country)
-                          );
-                        }}
-                      >
-                        {country}
-                      </DropdownMenuCheckboxItem>
-                    ))}
-                  </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <div className="flex flex-wrap gap-1 mt-2">
-                {selectedCountries.slice(0, 3).map((country) => (
-                  <Badge key={country} variant="secondary" className="text-xs">
-                    {country}
-                  </Badge>
-                ))}
-                {selectedCountries.length > 3 && (
-                  <Badge variant="secondary" className="text-xs">
-                    +{selectedCountries.length - 3} more
-                  </Badge>
-                )}
-              </div>
+        </div>
+      )}
+      {/* Main UI */}
+      <Card className="w-full">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-lg font-medium">
+            <div className="flex items-center">
+              Masking Options
+            </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isProcessing && (
+            <div className="mb-4">
+              <Progress value={progress} />
+              <div className="text-xs text-center mt-1">{progress}%</div>
             </div>
           )}
-
-          {/* Preserve Format Option */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Label htmlFor="preserveFormat" className="cursor-pointer">
-                Preserve Data Format
-              </Label>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div>
-                      <Info className="h-4 w-4 text-gray-400" />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    <p>When enabled, masking will maintain the original format of data (e.g., keeping the same number of characters, preserving special characters). Disable for fully randomized data.</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+          <div className="space-y-4">
+            {/* Country Preference Option */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Label htmlFor="countryPreference" className="cursor-pointer">
+                  Country Selection
+                </Label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div>
+                        <Info className="h-4 w-4 text-gray-400" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p>
+                        {hasCountryColumn 
+                          ? "If enabled, country preference will be applied based on the selected country in the dropdown. If disabled, it uses the column data." 
+                          : "Country preference will be applied based on the selected country in the dropdown as no country column is present in the uploaded file."}
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <Switch
+                id="countryPreference"
+                checked={useCountryDropdown}
+                onCheckedChange={setUseCountryDropdown}
+                disabled={!hasCountryColumn}
+              />
             </div>
-            <Switch
-              id="preserveFormat"
-              checked={preserveFormat}
-              onCheckedChange={setPreserveFormat}
-            />
-          </div>
-        </div>
-        
-        <div className="pt-2 flex justify-center">
-          <Button 
-            className="bg-masking-secondary hover:bg-masking-primary text-white py-1 w-auto max-w-[200px]"
-            onClick={handleApplyMasking}
-            disabled={isProcessing}
-            size="sm"
-          >
-            {isProcessing ? (
-              <span className="flex items-center">
-                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Processing...
-              </span>
-            ) : (
-              <span className="flex items-center">
-                <Check className="mr-2 h-4 w-4" /> Apply Masking
-              </span>
+
+            {/* Country Selection Dropdown - Show only if country preference is enabled */}
+            {useCountryDropdown && (
+              <div className="space-y-2">
+                <Label>Select Country</Label>
+                <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-between"
+                      onClick={() => setDropdownOpen(!dropdownOpen)}
+                    >
+                      {selectedCountry || "Select country..."}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-80" align="start">
+                    <DropdownMenuLabel>Select Country</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <div className="max-h-64 overflow-y-auto">
+                      {countries.map((country) => (
+                        <DropdownMenuCheckboxItem
+                          key={country}
+                          checked={selectedCountry === country}
+                          onCheckedChange={(checked) => {
+                            if (checked) setSelectedCountry(country);
+                          }}
+                        >
+                          {country}
+                        </DropdownMenuCheckboxItem>
+                      ))}
+                    </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {selectedCountry && (
+                    <Badge key={selectedCountry} variant="secondary" className="text-xs">
+                      {selectedCountry}
+                    </Badge>
+                  )}
+                </div>
+              </div>
             )}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+
+            {/* Preserve Format Option
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Label htmlFor="preserveFormat" className="cursor-pointer">
+                  Preserve Data Format
+                </Label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div>
+                        <Info className="h-4 w-4 text-gray-400" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p>When enabled, masking will maintain the original format of data (e.g., keeping the same number of characters, preserving special characters). Disable for fully randomized data.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <Switch
+                id="preserveFormat"
+                checked={preserveFormat}
+                onCheckedChange={setPreserveFormat}
+              />
+            </div> */}
+          </div>
+          
+          <div className="pt-2 flex justify-center">
+            <Button 
+              className="bg-masking-secondary hover:bg-masking-primary text-white py-1 w-auto max-w-[200px]"
+              onClick={handleApplyMasking}
+              disabled={isProcessing}
+              size="sm"
+            >
+              {isProcessing ? (
+                <span className="flex items-center">
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Processing...
+                </span>
+              ) : (
+                <span className="flex items-center">
+                  <Check className="mr-2 h-4 w-4" /> Apply Masking
+                </span>
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </>
   );
 };
 

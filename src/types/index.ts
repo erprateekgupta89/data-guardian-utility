@@ -1,12 +1,10 @@
-
-
 export type DataType = 
   | 'Email'
   | 'Address'
   | 'Country'
   | 'Name'
-  | 'First Name'
-  | 'Last Name'
+  // | 'First Name'
+  // | 'Last Name'
   | 'Phone Number'
   | 'Int'
   | 'Float'
@@ -24,6 +22,7 @@ export type DataType =
   | 'Date of birth'
   | 'Text'
   | 'Password'
+  | 'Nationality'
   | 'Unknown';
 
 export interface ColumnInfo {
@@ -32,6 +31,7 @@ export interface ColumnInfo {
   dataType: DataType;
   sampleData: string;
   skip: boolean;
+  userModified?: boolean;
 }
 
 export interface FileData {
