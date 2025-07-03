@@ -1,4 +1,3 @@
-
 import { ColumnInfo, DataType } from "@/types";
 import { randomString, randomNumber, getUniqueValues, getRandomSample } from "./maskingHelpers";
 import { maskPersonalInfo, maskLocationData, maskDateTime } from "./dataTypeMasking";
@@ -10,16 +9,22 @@ import { PatternAnalyzer, type PatternAnalysis } from "./patternAnalysis";
 export const maskData = (value: string, dataType: DataType, format?: string, constantValues?: string[], patternAnalysis?: PatternAnalysis, index?: number): string => {
   if (!value || value.trim() === '') return value;
   
-  // PRIORITY 1: Use pattern analysis for ANY data type if pattern is detected
+  // PRIORITY 1: Check for constant values first - NO sequential numbering for constant data
+  if (patternAnalysis?.isConstantValue && patternAnalysis.constantValue) {
+    console.log(`Using constant value for ${dataType}: ${patternAnalysis.constantValue}`);
+    return patternAnalysis.constantValue;
+  }
+
+  // PRIORITY 2: If constant values are provided from unique values, use them instead of generating new values
+  if (constantValues?.length) {
+    return constantValues[Math.floor(Math.random() * constantValues.length)];
+  }
+  
+  // PRIORITY 3: Use pattern analysis for incremental patterns (e.g., Campaign_1, Campaign_2)
   if (patternAnalysis && patternAnalysis.hasPrefix && typeof index === 'number') {
     const patternAnalyzer = new PatternAnalyzer();
     console.log(`Using pattern analysis for ${dataType}: ${patternAnalysis.prefix} (index: ${index})`);
     return patternAnalyzer.generatePatternBasedValue(patternAnalysis, index);
-  }
-
-  // PRIORITY 2: If constant values are provided, use them instead of generating new values
-  if (constantValues?.length) {
-    return constantValues[Math.floor(Math.random() * constantValues.length)];
   }
 
   switch(dataType) {
@@ -155,7 +160,7 @@ export const maskDataSet = async (
   columns: ColumnInfo[],
   options?: MaskingOptions
 ): Promise<Record<string, string>[]> => {
-  console.log('=== Starting Enhanced Masking Process ===');
+  console.log('=== Starting Enhanced Masking Process with Constant Value Detection ===');
   console.log('Data rows:', data.length);
   console.log('Columns:', columns.length);
   console.log('Azure OpenAI enabled:', options?.useAzureOpenAI);
@@ -191,11 +196,13 @@ export const maskDataSet = async (
       columnUniqueValues[column.name] = uniqueValues;
     }
 
-    // Analyze patterns for ALL columns (not just String type)
+    // Analyze patterns for ALL columns (including constant value detection)
     const allValues = workingData.map(row => row[column.name]).filter(Boolean);
     columnPatterns[column.name] = patternAnalyzer.analyzeColumnPattern(allValues);
     
-    if (columnPatterns[column.name].hasPrefix) {
+    if (columnPatterns[column.name].isConstantValue) {
+      console.log(`✅ Constant value detected for ${column.name}: ${columnPatterns[column.name].constantValue}`);
+    } else if (columnPatterns[column.name].hasPrefix) {
       console.log(`✅ Pattern detected for ${column.name} (${column.dataType}):`, columnPatterns[column.name]);
     }
   });
@@ -223,7 +230,7 @@ export const maskDataSet = async (
     console.log('Enhanced Azure OpenAI system initialized');
   }
   
-  console.log('Starting row-by-row masking...');
+  console.log('Starting row-by-row masking with enhanced constant value handling...');
   return Promise.all(workingData.map(async (row, index) => {
     if (index % 100 === 0) {
       console.log(`Processing row ${index + 1}/${workingData.length}`);
@@ -274,7 +281,7 @@ export const maskDataSet = async (
           );
         }
       } else {
-        // Apply pattern analysis to ALL columns
+        // Apply enhanced masking with constant value detection and pattern analysis
         maskedRow[column.name] = maskData(
           row[column.name], 
           column.dataType,

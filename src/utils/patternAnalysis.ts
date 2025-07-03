@@ -5,6 +5,8 @@ interface PatternAnalysis {
   basePattern: string;
   incrementalNumbers: number[];
   sampleSize: number;
+  isConstantValue: boolean;
+  constantValue?: string;
 }
 
 class PatternAnalyzer {
@@ -17,11 +19,27 @@ class PatternAnalyzer {
         prefix: '',
         basePattern: '',
         incrementalNumbers: [],
-        sampleSize: 0
+        sampleSize: 0,
+        isConstantValue: false
       };
     }
 
-    // Look for common prefix pattern (e.g., "Campaign_1", "Campaign_2")
+    // Check for constant values first (PRIORITY 1)
+    const constantCheck = this.detectConstantValue(nonEmptyValues);
+    if (constantCheck.isConstant) {
+      console.log(`✅ Constant value detected for column: ${constantCheck.value}`);
+      return {
+        hasPrefix: false,
+        prefix: '',
+        basePattern: '',
+        incrementalNumbers: [],
+        sampleSize: nonEmptyValues.length,
+        isConstantValue: true,
+        constantValue: constantCheck.value
+      };
+    }
+
+    // Look for common prefix pattern (e.g., "Campaign_1", "Campaign_2") only if not constant
     const prefixPattern = this.detectCommonPrefix(nonEmptyValues);
     
     if (prefixPattern.hasPrefix) {
@@ -31,7 +49,8 @@ class PatternAnalyzer {
         prefix: prefixPattern.prefix,
         basePattern: prefixPattern.basePattern,
         incrementalNumbers: numbers,
-        sampleSize: nonEmptyValues.length
+        sampleSize: nonEmptyValues.length,
+        isConstantValue: false
       };
     }
 
@@ -40,8 +59,55 @@ class PatternAnalyzer {
       prefix: '',
       basePattern: '',
       incrementalNumbers: [],
-      sampleSize: nonEmptyValues.length
+      sampleSize: nonEmptyValues.length,
+      isConstantValue: false
     };
+  }
+
+  private detectConstantValue(values: string[]): { isConstant: boolean; value?: string } {
+    if (values.length === 0) return { isConstant: false };
+
+    // Get the first non-empty value as reference
+    const referenceValue = values[0];
+    
+    // Check if all values are identical (allowing for minor variations in whitespace)
+    const normalizedReference = referenceValue.trim().toLowerCase();
+    const allIdentical = values.every(value => 
+      value.trim().toLowerCase() === normalizedReference
+    );
+
+    if (allIdentical) {
+      return { isConstant: true, value: referenceValue.trim() };
+    }
+
+    // Check if at least 95% of values are the same (to handle minor data inconsistencies)
+    const valueCounts = new Map<string, number>();
+    values.forEach(value => {
+      const normalized = value.trim().toLowerCase();
+      valueCounts.set(normalized, (valueCounts.get(normalized) || 0) + 1);
+    });
+
+    const maxCount = Math.max(...valueCounts.values());
+    const dominantPercentage = maxCount / values.length;
+
+    if (dominantPercentage >= 0.95) {
+      // Find the most common value (preserving original case)
+      let dominantValue = '';
+      let maxCountActual = 0;
+      
+      for (const value of values) {
+        const normalized = value.trim().toLowerCase();
+        const count = valueCounts.get(normalized) || 0;
+        if (count > maxCountActual) {
+          maxCountActual = count;
+          dominantValue = value.trim();
+        }
+      }
+      
+      return { isConstant: true, value: dominantValue };
+    }
+
+    return { isConstant: false };
   }
 
   private detectCommonPrefix(values: string[]): { hasPrefix: boolean; prefix: string; basePattern: string } {
