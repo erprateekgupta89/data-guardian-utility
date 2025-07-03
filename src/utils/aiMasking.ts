@@ -1,275 +1,348 @@
-/****************************************************************************************
- * Data‑masking helper – Azure OpenAI edition
- ****************************************************************************************/
 
-import { ColumnInfo } from '../types';
+import { ColumnInfo, DataType } from '../types';
 
-/* ────────────────────────────────────────────────────────────────────────── */
-/*  Azure OpenAI configuration                                               */
-/* ────────────────────────────────────────────────────────────────────────── */
-
-// Change these to match your Azure resource
-const AZURE_OPENAI_API_KEY = 'AEw7fZ3WwPe6u6Msudlam9bpTz7sSM8JiUhVHIDtpvSHpXn4GDcIJQQJ99BBACYeBjFXJ3w3AAABACOGZap5';
-const AZURE_OPENAI_ENDPOINT =
-  'https://qatai.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2025-01-01-preview';
-
-/* ────────────────────────────────────────────────────────────────────────── */
-/*  Behaviour tuning                                                         */
-/* ────────────────────────────────────────────────────────────────────────── */
-
-const BATCH_SIZE   = 10;
-const MAX_RETRIES  = 3;
-const TIMEOUT_MS   = 30_000;
-
-/* ────────────────────────────────────────────────────────────────────────── */
-/*  Response types                                                           */
-/* ────────────────────────────────────────────────────────────────────────── */
+const OPENAI_API_ENDPOINT = 'https://api.openai.com/v4/chat/completions';
+const BATCH_SIZE = 10;
+const MAX_RETRIES = 3;
+const TIMEOUT_MS = 30000;
 
 interface OpenAIResponse {
-  choices: { message: { content: string } }[];
+  choices: Array<{
+    message: {
+      content: string;
+    };
+  }>;
 }
+
 interface MaskingResponse {
   [key: string]: string;
 }
 
-/* ────────────────────────────────────────────────────────────────────────── */
-/*  Public API                                                               */
-/* ────────────────────────────────────────────────────────────────────────── */
-
-/**
- * Masks `data` using Azure OpenAI.
- * @param data      Array of input rows
- * @param columns   Column metadata
- * @param apiKey    Optional override for the Azure key
- * @param onProgress Optional progress callback (0–100)
- */
 export async function maskDataWithAI(
   data: Record<string, string>[],
   columns: ColumnInfo[],
-  apiKey: string = AZURE_OPENAI_API_KEY,
-  onProgress?: (p: number) => void
+  apiKey: string,
+  onProgress?: (progress: number) => void
 ): Promise<Record<string, string>[]> {
+  console.log('Starting AI masking process', { dataCount: data.length, columnsCount: columns.length });
+  
+  if (!apiKey) {
+    throw new Error('OpenAI API key is required');
+  }
 
-  console.log('Masking start', { rows: data.length, cols: columns.length });
-
-  if (!apiKey) throw new Error('Azure OpenAI API‑key required');
-
-  const columnsToMask = columns.filter(c => !c.skip);
-  if (!columnsToMask.length) {
+  const columnsToMask = columns.filter(col => !col.skip);
+  console.log('Columns to mask:', columnsToMask.map(col => ({ name: col.name, dataType: col.dataType })));
+  
+  if (columnsToMask.length === 0) {
+    console.log('No columns to mask, returning original data');
     onProgress?.(100);
     return data;
   }
 
-  return maskDataWithAIBatched(data, columnsToMask, apiKey, onProgress);
+  return await maskDataWithAIBatched(data, columnsToMask, apiKey, onProgress);
 }
-
-/* ────────────────────────────────────────────────────────────────────────── */
-/*  Batch orchestration                                                      */
-/* ────────────────────────────────────────────────────────────────────────── */
 
 async function maskDataWithAIBatched(
-  allRows : Record<string, string>[],
-  columns : ColumnInfo[],
-  apiKey  : string,
-  progressCb?: (p: number) => void
-) {
-  const out: Record<string, string>[] = [];
-  const total = Math.ceil(allRows.length / BATCH_SIZE);
+  data: Record<string, string>[],
+  columns: ColumnInfo[],
+  apiKey: string,
+  onProgress?: (progress: number) => void
+): Promise<Record<string, string>[]> {
+  const maskedData: Record<string, string>[] = [];
+  const totalBatches = Math.ceil(data.length / BATCH_SIZE);
+  let processedBatches = 0;
 
-  for (let o = 0; o < allRows.length; o += BATCH_SIZE) {
-    const batch = allRows.slice(o, o + BATCH_SIZE);
-    const idx   = o / BATCH_SIZE;
+  console.log(`Processing ${data.length} rows in ${totalBatches} batches of ${BATCH_SIZE}`);
 
+  for (let i = 0; i < data.length; i += BATCH_SIZE) {
+    const batch = data.slice(i, i + BATCH_SIZE);
+    console.log(`Processing batch ${processedBatches + 1}/${totalBatches}`, { batchSize: batch.length });
+    
     try {
-      const masked = await withRetry(() => processBatch(batch, columns, apiKey));
-      out.push(...masked);
-    } catch (e) {
-      console.error(`Batch ${idx + 1} failed – using originals`, e);
-      out.push(...batch);
+      const maskedBatch = await processBatchWithRetry(batch, columns, apiKey);
+      maskedData.push(...maskedBatch);
+      
+      processedBatches++;
+      const progress = Math.round((processedBatches / totalBatches) * 100);
+      console.log(`Batch ${processedBatches} completed, progress: ${progress}%`);
+      onProgress?.(progress);
+      
+    } catch (error) {
+      console.error(`Failed to process batch ${processedBatches + 1}:`, error);
+      // Add original batch data as fallback
+      maskedData.push(...batch);
+      processedBatches++;
+      onProgress?.(Math.round((processedBatches / totalBatches) * 100));
     }
-
-    progressCb?.(Math.round(((idx + 1) / total) * 100));
   }
-  return out;
+
+  console.log('AI masking completed', { originalCount: data.length, maskedCount: maskedData.length });
+  return maskedData;
 }
 
-/* ────────────────────────────────────────────────────────────────────────── */
-/*  Retry helper                                                             */
-/* ────────────────────────────────────────────────────────────────────────── */
-
-async function withRetry<T>(fn: () => Promise<T>, attempt = 0): Promise<T> {
+async function processBatchWithRetry(
+  batch: Record<string, string>[],
+  columns: ColumnInfo[],
+  apiKey: string,
+  retryCount = 0
+): Promise<Record<string, string>[]> {
   try {
-    return await fn();
-  } catch (err) {
-    if (attempt < MAX_RETRIES) {
-      console.warn(`Retry ${attempt + 1}/${MAX_RETRIES}`);
-      await new Promise(r => setTimeout(r, 1_000 * (attempt + 1)));
-      return withRetry(fn, attempt + 1);
+    return await processBatch(batch, columns, apiKey);
+  } catch (error) {
+    console.error(`Batch processing attempt ${retryCount + 1} failed:`, error);
+    
+    if (retryCount < MAX_RETRIES) {
+      console.log(`Retrying batch processing (attempt ${retryCount + 2}/${MAX_RETRIES + 1})`);
+      await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1))); // Exponential backoff
+      return processBatchWithRetry(batch, columns, apiKey, retryCount + 1);
+    } else {
+      console.error('Max retries reached, using fallback masking');
+      return batch; // Return original data as fallback
     }
-    throw err;
   }
 }
-
-/* ────────────────────────────────────────────────────────────────────────── */
-/*  Single‑batch call to Azure OpenAI                                        */
-/* ────────────────────────────────────────────────────────────────────────── */
 
 async function processBatch(
-  batch  : Record<string, string>[],
+  batch: Record<string, string>[],
   columns: ColumnInfo[],
-  apiKey : string
-) {
-  const userPrompt    = createMaskingPrompt(batch, columns);
-  const systemPrompt  = 'You are a data‑masking assistant. Return only valid JSON arrays with no extra text.';
-  const requestId     = typeof crypto?.randomUUID === 'function'
-                        ? crypto.randomUUID()
-                        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  apiKey: string
+): Promise<Record<string, string>[]> {
+  const prompt = createMaskingPrompt(batch, columns);
+  console.log('Generated prompt:', prompt.substring(0, 200) + '...');
 
   const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
-  const response = await fetch(AZURE_OPENAI_ENDPOINT, {
-    method : 'POST',
-    headers: {
-      'Content-Type' : 'application/json',
-      'api-key'      : apiKey,
-      // Cache‑busting
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Pragma'       : 'no-cache',
-      'Expires'      : '0',
-      'X-Request-ID' : requestId,
-    },
-    body: JSON.stringify({
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user',   content: userPrompt   }
-      ],
-      /* slight randomness for multi‑call robustness */
-      temperature       : 0.7 + Math.random() * 0.05,
-      top_p             : 0.6 + Math.random() * 0.1,
-      presence_penalty  : Math.random() * 0.1,
-      max_tokens        : 4000,
-    }),
-    signal: controller.signal,
-  });
-
-  clearTimeout(t);
-
-  if (!response.ok) {
-    const txt = await response.text();
-    throw new Error(`[Azure OpenAI] ${response.status} ${response.statusText}: ${txt}`);
-  }
-
-  const json: OpenAIResponse = await response.json();
-  const content = json.choices[0]?.message?.content?.trim() ?? '';
-
-  return parseOpenAIResponse(content, batch, columns);
-}
-
-/* ────────────────────────────────────────────────────────────────────────── */
-/*  Response parsing                                                         */
-/* ────────────────────────────────────────────────────────────────────────── */
-
-function parseOpenAIResponse(
-  content : string,
-  original: Record<string, string>[],
-  columns : ColumnInfo[]
-) {
   try {
-    let clean = content.replace(/```json\s*|\s*```$/g, '').trim();
-    const match = clean.match(/\[[\s\S]*\]/);
-    if (match) clean = match[0];
-
-    const arr: MaskingResponse[] = JSON.parse(clean);
-    if (!Array.isArray(arr)) throw new Error('AI response is not an array');
-
-    return original.map((row, i) => {
-      const ai = arr[i] ?? {};
-      const out: Record<string, string> = { ...row };
-
-      columns.forEach(c => {
-        if (c.skip) return;
-        const v = ai[c.name];
-        if (v !== undefined && v !== null) {
-          out[c.name] =
-            c.dataType === 'Address'
-              ? handleAddressResponse(v, row[c.name])
-              : String(v);
-        }
-      });
-      return out;
+    const response = await fetch(OPENAI_API_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a data masking assistant. Return only valid JSON arrays without any additional text or formatting.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.1,
+        max_tokens: 4000,
+      }),
+      signal: controller.signal
     });
 
-  } catch (e) {
-    console.error('Parse error', e, content);
-    throw e;
-  }
-}
+    clearTimeout(timeoutId);
 
-/* ────────────────────────────────────────────────────────────────────────── */
-/*  Address helper                                                           */
-/* ────────────────────────────────────────────────────────────────────────── */
-
-function handleAddressResponse(ai: any, fallback: string): string {
-  try {
-    if (typeof ai === 'string') return ai;
-
-    if (ai && typeof ai === 'object') {
-      const pick = (keys: string[]) => keys.find(k => ai[k]);
-      const parts = [
-        ai[pick(['street', 'address', 'street_address', 'line1'])!],
-        ai[pick(['city', 'locality'])!],
-        ai[pick(['state', 'region', 'province'])!],
-        ai[pick(['zip', 'zipcode', 'postal_code', 'postcode'])!],
-      ].filter(Boolean);
-      if (parts.length) return parts.join(', ');
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('OpenAI API error:', { status: response.status, statusText: response.statusText, error: errorText });
+      throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
     }
-    return fallback;
-  } catch {
-    return fallback;
+
+    const result: OpenAIResponse = await response.json();
+    console.log('Raw OpenAI response:', result);
+
+    if (!result.choices || result.choices.length === 0) {
+      throw new Error('No choices in OpenAI response');
+    }
+
+    const content = result.choices[0].message.content.trim();
+    console.log('OpenAI response content:', content);
+
+    return parseOpenAIResponse(content, batch, columns);
+
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Request timeout');
+    }
+    throw error;
   }
 }
 
-/* ────────────────────────────────────────────────────────────────────────── */
-/*  Prompt builder                                                           */
-/* ────────────────────────────────────────────────────────────────────────── */
-
-function createMaskingPrompt(
-  batch  : Record<string, string>[],
+function parseOpenAIResponse(
+  content: string,
+  originalBatch: Record<string, string>[],
   columns: ColumnInfo[]
-) {
-  const colDesc = columns.filter(c => !c.skip)
-    .map(c => `- ${c.name}: ${c.dataType}`)
+): Record<string, string>[] {
+  try {
+    // Clean the response content
+    let cleanContent = content.replace(/```json\s*/, '').replace(/```\s*$/, '').trim();
+    
+    // Try to find JSON array in the content
+    const jsonMatch = cleanContent.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      cleanContent = jsonMatch[0];
+    }
+
+    console.log('Attempting to parse cleaned content:', cleanContent);
+    const parsedResponse: MaskingResponse[] = JSON.parse(cleanContent);
+
+    if (!Array.isArray(parsedResponse)) {
+      console.error('Response is not an array:', parsedResponse);
+      throw new Error('Expected array response from AI');
+    }
+
+    if (parsedResponse.length !== originalBatch.length) {
+      console.warn(`Response length mismatch: expected ${originalBatch.length}, got ${parsedResponse.length}`);
+    }
+
+    // Process each response item
+    const maskedBatch = originalBatch.map((originalRow, index) => {
+      const responseRow = parsedResponse[index];
+      if (!responseRow) {
+        console.warn(`No response for row ${index}, using original data`);
+        return originalRow;
+      }
+
+      const maskedRow = { ...originalRow };
+
+      // Apply masking for each column
+      columns.forEach(column => {
+        if (column.skip) return;
+
+        const maskedValue = responseRow[column.name];
+        if (maskedValue !== undefined && maskedValue !== null) {
+          // Special handling for address fields
+          if (column.dataType === 'Address') {
+            maskedRow[column.name] = handleAddressResponse(maskedValue, originalRow[column.name]);
+          } else {
+            maskedRow[column.name] = String(maskedValue);
+          }
+        } else {
+          console.warn(`No masked value for column ${column.name} in row ${index}`);
+        }
+      });
+
+      return maskedRow;
+    });
+
+    console.log('Successfully parsed and processed batch:', { originalCount: originalBatch.length, maskedCount: maskedBatch.length });
+    return maskedBatch;
+
+  } catch (error) {
+    console.error('Error parsing OpenAI response:', error);
+    console.error('Original content:', content);
+    throw new Error(`Failed to parse AI response: ${error.message}`);
+  }
+}
+
+function handleAddressResponse(aiResponse: any, originalValue: string): string {
+  try {
+    // If the AI response is already a string, use it directly
+    if (typeof aiResponse === 'string') {
+      return aiResponse;
+    }
+
+    // If the AI response is an object with address components, format it
+    if (typeof aiResponse === 'object' && aiResponse !== null) {
+      const parts = [];
+      
+      // Try common address field names
+      const addressFields = ['street', 'address', 'street_address', 'line1'];
+      const cityFields = ['city', 'locality'];
+      const stateFields = ['state', 'region', 'province'];
+      const zipFields = ['zip', 'zipcode', 'postal_code', 'postcode'];
+
+      // Extract street address
+      for (const field of addressFields) {
+        if (aiResponse[field]) {
+          parts.push(aiResponse[field]);
+          break;
+        }
+      }
+
+      // Extract city
+      for (const field of cityFields) {
+        if (aiResponse[field]) {
+          parts.push(aiResponse[field]);
+          break;
+        }
+      }
+
+      // Extract state
+      for (const field of stateFields) {
+        if (aiResponse[field]) {
+          parts.push(aiResponse[field]);
+          break;
+        }
+      }
+
+      // Extract zip code
+      for (const field of zipFields) {
+        if (aiResponse[field]) {
+          parts.push(aiResponse[field]);
+          break;
+        }
+      }
+
+      if (parts.length > 0) {
+        return parts.join(', ');
+      }
+
+      // If we can't parse the object, stringify it
+      return JSON.stringify(aiResponse);
+    }
+
+    // Fallback to original value if we can't process the response
+    console.warn('Could not process address response, using original:', { aiResponse, originalValue });
+    return originalValue;
+
+  } catch (error) {
+    console.error('Error handling address response:', error);
+    return originalValue;
+  }
+}
+
+function createMaskingPrompt(batch: Record<string, string>[], columns: ColumnInfo[]): string {
+  const columnDescriptions = columns
+    .filter(col => !col.skip)
+    .map(col => `- ${col.name}: ${col.dataType}`)
     .join('\n');
 
-  const sample = batch.slice(0, 3).map((row, i) => {
-    const obj: Record<string, string> = {};
-    columns.forEach(c => !c.skip && (obj[c.name] = row[c.name]));
-    return `Row ${i + 1}: ${JSON.stringify(obj)}`;
+  const sampleData = batch.slice(0, 3).map((row, index) => {
+    const filteredRow = {};
+    columns.forEach(col => {
+      if (!col.skip) {
+        filteredRow[col.name] = row[col.name];
+      }
+    });
+    return `Row ${index + 1}: ${JSON.stringify(filteredRow)}`;
   }).join('\n');
 
-  const payload = batch.map(row => {
-    const obj: Record<string, string> = {};
-    columns.forEach(c => !c.skip && (obj[c.name] = row[c.name]));
-    return obj;
-  });
-
-  return `Mask the following data by replacing real values with realistic fakes.
+  return `Mask the following data by replacing real values with realistic fake values. Keep the same data types and formats.
 
 Columns to mask:
-${colDesc}
+${columnDescriptions}
 
 Rules:
-1. Address → realistic street addresses
-2. Email   → realistic email addresses
-3. Phone   → realistic phone numbers
-4. Name    → realistic names
-5. Others  → type‑appropriate fakes
-6. Return ONLY a JSON array with the same keys, no extra text.
+1. For Address: Generate realistic street addresses
+2. For Email: Generate realistic email addresses  
+3. For Phone Number: Generate realistic phone numbers
+4. For Name: Generate realistic names
+5. For other fields: Generate appropriate fake data matching the data type
+6. Return ONLY a JSON array of objects with the same structure
+7. Each object should have the same keys as the input
+8. Do not include any explanation or additional text
 
-Sample input:
-${sample}
+Sample input data:
+${sampleData}
 
 Data to mask (return exactly ${batch.length} objects):
-${JSON.stringify(payload)}`;
+${JSON.stringify(batch.map(row => {
+  const filteredRow = {};
+  columns.forEach(col => {
+    if (!col.skip) {
+      filteredRow[col.name] = row[col.name];
+    }
+  });
+  return filteredRow;
+}))}`;
 }
