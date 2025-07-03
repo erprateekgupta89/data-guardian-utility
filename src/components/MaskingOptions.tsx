@@ -200,7 +200,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-lg font-medium">
             <div className="flex items-center">
-              AI Masking Options
+              Masking Options
               {hasLocationColumns && (
                 <div className="flex items-center ml-2 space-x-1">
                   <Badge variant="outline" className="text-xs">

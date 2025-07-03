@@ -1,4 +1,3 @@
-
 interface AzureOpenAIConfig {
   endpoint: string;
   apiKey: string;
@@ -9,6 +8,13 @@ interface AzureOpenAIConfig {
 interface AddressGenerationRequest {
   country: string;
   count: number;
+  addressType?: 'residential' | 'commercial' | 'mixed';
+  regions?: string[];
+  specificRequirements?: string;
+}
+
+interface BatchAddressGenerationRequest {
+  countries: { country: string; count: number }[];
   addressType?: 'residential' | 'commercial' | 'mixed';
   regions?: string[];
   specificRequirements?: string;
@@ -29,6 +35,16 @@ interface AddressGenerationResponse {
     country: string;
     generatedCount: number;
     requestedCount: number;
+    quality: 'high' | 'medium' | 'low';
+  };
+}
+
+interface BatchAddressGenerationResponse {
+  addressesByCountry: Map<string, GeneratedAddress[]>;
+  metadata: {
+    totalGenerated: number;
+    totalRequested: number;
+    countries: string[];
     quality: 'high' | 'medium' | 'low';
   };
 }
@@ -76,6 +92,191 @@ class AzureOpenAIService {
     }
     
     return [];
+  }
+
+  async generateBatchAddresses(request: BatchAddressGenerationRequest): Promise<BatchAddressGenerationResponse> {
+    console.log('=== Azure OpenAI Batch Address Generation Started ===');
+    console.log('Batch Request:', JSON.stringify(request, null, 2));
+    
+    for (let attempt = 1; attempt <= this.retryCount; attempt++) {
+      try {
+        console.log(`Batch attempt ${attempt} of ${this.retryCount}`);
+        
+        const response = await this.makeBatchAPICall(request);
+        console.log('Raw Batch API Response:', response);
+        
+        const result = this.parseBatchAddressResponse(response, request.countries);
+        console.log('Parsed batch result:', result);
+        
+        if (result.addressesByCountry.size > 0) {
+          console.log(`✅ Successfully generated batch addresses for ${result.addressesByCountry.size} countries`);
+          return result;
+        }
+        
+        if (attempt === this.retryCount) {
+          console.warn(`❌ Failed to generate batch addresses after ${this.retryCount} attempts`);
+          return result;
+        }
+      } catch (error) {
+        console.error(`❌ Batch attempt ${attempt} failed:`, error);
+        if (attempt === this.retryCount) {
+          throw error;
+        }
+        await this.delay(1000 * attempt);
+      }
+    }
+    
+    return {
+      addressesByCountry: new Map(),
+      metadata: {
+        totalGenerated: 0,
+        totalRequested: request.countries.reduce((sum, c) => sum + c.count, 0),
+        countries: request.countries.map(c => c.country),
+        quality: 'low'
+      }
+    };
+  }
+
+  private async makeBatchAPICall(request: BatchAddressGenerationRequest): Promise<string> {
+    const totalCount = request.countries.reduce((sum, c) => sum + c.count, 0);
+    const countryBreakdown = request.countries
+      .map(c => `${c.country}: ${c.count} addresses`)
+      .join(', ');
+
+    const systemPrompt = `
+You are a synthetic test data generator for software development purposes.
+Generate fictional, non-sensitive test data only.
+Return data as a JSON object with country names as keys and arrays of address strings as values.
+    `.trim();
+
+    const userPrompt = `
+Generate ${totalCount} unique, realistic, and complete fictional postal addresses for software testing across multiple countries.
+Generate exactly the following distribution: ${countryBreakdown}
+
+Each address must include: street, city, region/state (if applicable), postal code, and country — all in the correct local format.
+Ensure that postal codes correspond correctly to their respective city and state.
+
+Return only a valid JSON object with country names as keys and arrays of address strings as values, with no extra explanation, headers, or metadata.
+
+Example format:
+{
+  "United States": [
+    "123 Main Street, New York, NY 10001, United States",
+    "456 Oak Avenue, Los Angeles, CA 90210, United States"
+  ],
+  "Canada": [
+    "789 Maple Street, Toronto, ON M5H 2N2, Canada"
+  ],
+  "United Kingdom": [
+    "45 Baker Street, London SW1A 1AA, United Kingdom"
+  ]
+}
+    `.trim();
+
+    console.log('=== Batch API Call Details ===');
+    console.log('System Prompt:', systemPrompt);
+    console.log('User Prompt:', userPrompt);
+
+    const requestBody = {
+      messages: [
+        {
+          role: 'system',
+          content: systemPrompt
+        },
+        {
+          role: 'user',
+          content: userPrompt
+        }
+      ],
+      max_tokens: 4000,
+      temperature: 0.7,
+      top_p: 0.9,
+      frequency_penalty: 0.1,
+      presence_penalty: 0.1,
+    };
+
+    const response = await fetch(this.config.endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'api-key': this.config.apiKey,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    console.log('Batch Response Status:', response.status, response.statusText);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Batch API Error Response:', errorText);
+      throw new Error(`Azure OpenAI Batch API error: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('Full Batch API Response:', JSON.stringify(data, null, 2));
+    
+    const content = data.choices?.[0]?.message?.content;
+    
+    if (!content) {
+      console.error('No content in batch response:', data);
+      throw new Error('No content received from Azure OpenAI batch call');
+    }
+
+    return content;
+  }
+
+  private parseBatchAddressResponse(
+    content: string, 
+    requestedCountries: { country: string; count: number }[]
+  ): BatchAddressGenerationResponse {
+    try {
+      console.log('=== Parsing Batch Response ===');
+      console.log('Raw batch content:', content);
+      
+      // Extract JSON object from response
+      let jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        console.error('No JSON object found in batch response');
+        throw new Error('No JSON object found in batch response');
+      }
+
+      const addressData = JSON.parse(jsonMatch[0]);
+      console.log('Parsed address data:', addressData);
+
+      const addressesByCountry = new Map<string, GeneratedAddress[]>();
+      let totalGenerated = 0;
+      const totalRequested = requestedCountries.reduce((sum, c) => sum + c.count, 0);
+
+      // Process each country's addresses
+      for (const { country, count } of requestedCountries) {
+        const countryAddresses = addressData[country] || [];
+        if (Array.isArray(countryAddresses)) {
+          const structuredAddresses = countryAddresses
+            .slice(0, count) // Take only the requested count
+            .map((addr: string) => this.parseAddressString(addr, country))
+            .filter(addr => this.isValidAddress(addr));
+          
+          if (structuredAddresses.length > 0) {
+            addressesByCountry.set(country, structuredAddresses);
+            totalGenerated += structuredAddresses.length;
+          }
+        }
+      }
+
+      return {
+        addressesByCountry,
+        metadata: {
+          totalGenerated,
+          totalRequested,
+          countries: requestedCountries.map(c => c.country),
+          quality: totalGenerated >= totalRequested * 0.8 ? 'high' : 
+                   totalGenerated >= totalRequested * 0.5 ? 'medium' : 'low'
+        }
+      };
+    } catch (error) {
+      console.error('Error parsing batch address response:', error);
+      throw new Error('Failed to parse batch address response from Azure OpenAI');
+    }
   }
 
   private async makeAPICall(request: AddressGenerationRequest): Promise<string> {
@@ -309,4 +510,4 @@ Example format:
   }
 }
 
-export { AzureOpenAIService, type AzureOpenAIConfig, type GeneratedAddress, type AddressGenerationRequest };
+export { AzureOpenAIService, type AzureOpenAIConfig, type GeneratedAddress, type AddressGenerationRequest, type BatchAddressGenerationRequest, type BatchAddressGenerationResponse };

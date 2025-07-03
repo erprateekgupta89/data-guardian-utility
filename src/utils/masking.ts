@@ -10,15 +10,15 @@ import { PatternAnalyzer, type PatternAnalysis } from "./patternAnalysis";
 export const maskData = (value: string, dataType: DataType, format?: string, constantValues?: string[], patternAnalysis?: PatternAnalysis, index?: number): string => {
   if (!value || value.trim() === '') return value;
   
-  // If constant values are provided, use them instead of generating new values
-  if (constantValues?.length) {
-    return constantValues[Math.floor(Math.random() * constantValues.length)];
-  }
-
-  // Use pattern analysis for String data type if available
+  // PRIORITY 1: Use pattern analysis for String data type if available
   if (dataType === 'String' && patternAnalysis && patternAnalysis.hasPrefix && typeof index === 'number') {
     const patternAnalyzer = new PatternAnalyzer();
     return patternAnalyzer.generatePatternBasedValue(patternAnalysis, index);
+  }
+
+  // PRIORITY 2: If constant values are provided, use them instead of generating new values
+  if (constantValues?.length) {
+    return constantValues[Math.floor(Math.random() * constantValues.length)];
   }
 
   switch(dataType) {

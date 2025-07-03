@@ -1,4 +1,5 @@
-import { AzureOpenAIService, GeneratedAddress, type AzureOpenAIConfig } from '@/services/azureOpenAI';
+
+import { AzureOpenAIService, GeneratedAddress, type AzureOpenAIConfig, type BatchAddressGenerationRequest } from '@/services/azureOpenAI';
 import { EnhancedAddressGenerator, type EnhancedMaskingOptions } from './enhancedAddressGeneration';
 import { GeoColumnDetector, type GeoColumnMapping } from './geoColumnDetection';
 import { DataPreservationEngine, type PreservationRule } from './dataPreservation';
@@ -76,7 +77,7 @@ class AzureOpenAIMasking {
       console.log('Created preservation rules:', this.preservationRules.length);
     }
 
-    // Use intelligent batching strategy
+    // Use intelligent batching strategy with OPTIMIZED API CALLS
     if (this.options.useIntelligentBatching) {
       const batchingDecision = this.batchStrategy.analyzeBatchingNeeds(
         data,
@@ -92,16 +93,53 @@ class AzureOpenAIMasking {
         this.geoMapping
       );
 
-      // Pre-generate batches for high-priority countries
-      for (const strategy of strategies.filter(s => s.priority === 'high')) {
-        await this.preGenerateBatch(strategy);
-      }
+      // OPTIMIZATION: Use single batch API call for all countries
+      await this.preGenerateBatchOptimized(strategies.filter(s => s.priority === 'high'));
     } else {
       // Fallback to original initialization
       await this.initializeOriginalMethod(data, countryColumnName);
     }
 
     console.log('Enhanced initialization complete');
+  }
+
+  private async preGenerateBatchOptimized(strategies: BatchCreationStrategy[]): Promise<void> {
+    if (strategies.length === 0) return;
+
+    try {
+      console.log('=== OPTIMIZED: Single Batch API Call for All Countries ===');
+      
+      // Create batch request for all countries at once
+      const batchRequest: BatchAddressGenerationRequest = {
+        countries: strategies.map(strategy => ({
+          country: strategy.country,
+          count: strategy.requiredCount
+        }))
+      };
+
+      console.log('Batch request:', batchRequest);
+
+      // Single API call for all countries
+      const batchResponse = await this.service.generateBatchAddresses(batchRequest);
+      
+      console.log(`✅ OPTIMIZED: Generated addresses for ${batchResponse.addressesByCountry.size} countries in ONE API call`);
+      console.log('Batch response metadata:', batchResponse.metadata);
+
+      // Store addresses in country maps
+      for (const [country, addresses] of batchResponse.addressesByCountry.entries()) {
+        this.countryAddressMap.set(country, addresses);
+        this.countryIndexMap.set(country, 0);
+        console.log(`Stored ${addresses.length} addresses for ${country}`);
+      }
+
+    } catch (error) {
+      console.error('❌ OPTIMIZED batch generation failed, falling back to individual calls:', error);
+      
+      // Fallback to individual calls if batch fails
+      for (const strategy of strategies) {
+        await this.preGenerateBatch(strategy);
+      }
+    }
   }
 
   private async preGenerateBatch(strategy: BatchCreationStrategy): Promise<void> {
