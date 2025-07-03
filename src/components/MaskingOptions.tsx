@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Check, Info } from 'lucide-react';
 import { ColumnInfo, FileData, MaskingConfig, AzureOpenAISettings } from '@/types';
@@ -299,7 +298,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
                   Apply Enhanced Masking
                 </span>
               )}
-            </button>
+            </Button>
           </div>
         </CardContent>
       </Card>
