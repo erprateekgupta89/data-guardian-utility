@@ -1,7 +1,9 @@
+
 import { ColumnInfo, DataType } from "@/types";
 import { randomString, randomNumber, getUniqueValues, getRandomSample } from "./maskingHelpers";
 import { maskPersonalInfo, maskLocationData, maskDateTime } from "./dataTypeMasking";
 import { detectColumnDataType } from "./dataDetection";
+import { AzureOpenAIMasking, type AzureOpenAIMaskingOptions } from "./azureOpenAIMasking";
 
 // Mask data based on its type and original format
 export const maskData = (value: string, dataType: DataType, format?: string, constantValues?: string[]): string => {
@@ -135,14 +137,16 @@ export const maskData = (value: string, dataType: DataType, format?: string, con
 interface MaskingOptions {
   useCountryDropdown?: boolean;
   selectedCountries?: string[];
+  useAzureOpenAI?: boolean;
+  azureOpenAIConfig?: AzureOpenAIMaskingOptions;
 }
 
 // Process and mask all data
-export const maskDataSet = (
+export const maskDataSet = async (
   data: Record<string, string>[],
   columns: ColumnInfo[],
   options?: MaskingOptions
-): Record<string, string>[] => {
+): Promise<Record<string, string>[]> => {
   // --- Pre-masking: Re-infer and correct column data types ---
   columns.forEach(col => {
     if (
@@ -172,11 +176,17 @@ export const maskDataSet = (
       columnUniqueValues[column.name] = uniqueValues;
     }
   });
+
+  // Initialize Azure OpenAI masking if enabled
+  let azureOpenAIMasking: AzureOpenAIMasking | null = null;
+  if (options?.useAzureOpenAI && options?.azureOpenAIConfig) {
+    azureOpenAIMasking = new AzureOpenAIMasking(options.azureOpenAIConfig);
+  }
   
-  return workingData.map(row => {
+  return Promise.all(workingData.map(async row => {
     const maskedRow: Record<string, string> = {};
     
-    columns.forEach(column => {
+    for (const column of columns) {
       if (column.skip) {
         // If skip is true, preserve the original data without any masking
         maskedRow[column.name] = row[column.name];
@@ -192,6 +202,26 @@ export const maskDataSet = (
         // If it's a country column and useCountryDropdown is true, use the selected countries
         const randomIndex = Math.floor(Math.random() * options.selectedCountries.length);
         maskedRow[column.name] = options.selectedCountries[randomIndex];
+      } else if (azureOpenAIMasking && ['Address', 'City', 'State', 'Postal Code'].includes(column.dataType)) {
+        // Use Azure OpenAI for location data if enabled
+        try {
+          const selectedCountry = options?.selectedCountries?.[0] || 'United States';
+          maskedRow[column.name] = await azureOpenAIMasking.maskData(
+            row[column.name], 
+            column.dataType,
+            selectedCountry
+          );
+        } catch (error) {
+          console.error(`Azure OpenAI masking failed for ${column.name}:`, error);
+          // Fallback to regular masking
+          const constantValues = columnUniqueValues[column.name];
+          maskedRow[column.name] = maskData(
+            row[column.name], 
+            column.dataType,
+            row[column.name],
+            constantValues
+          );
+        }
       } else {
         // Pass constant values if they exist for this column
         const constantValues = columnUniqueValues[column.name];
@@ -202,8 +232,8 @@ export const maskDataSet = (
           constantValues
         );
       }
-    });
+    }
     
     return maskedRow;
-  });
+  }));
 };

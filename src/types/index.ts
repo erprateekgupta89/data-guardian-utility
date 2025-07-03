@@ -1,3 +1,4 @@
+
 export type DataType = 
   | 'Email'
   | 'Address'
@@ -45,11 +46,19 @@ export interface FileData {
 
 export type ExportFormat = 'CSV' | 'Excel' | 'SQL' | 'XML' | 'JSON';
 
+export interface AzureOpenAISettings {
+  enabled: boolean;
+  endpoint: string;
+  apiKey: string;
+  apiVersion: string;
+  deploymentName: string;
+}
+
 export interface MaskingConfig {
   preserveFormat: boolean;
   createTableSQL: boolean;
   tableName: string;
   useCountryDropdown?: boolean;
   selectedCountries?: string[];
+  azureOpenAI?: AzureOpenAISettings;
 }
-
