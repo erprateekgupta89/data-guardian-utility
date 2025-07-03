@@ -22,7 +22,7 @@ class GeoColumnDetector {
     city: /^(city|town|municipality|locality|urban_area)$/i,
     state: /^(state|province|region|territory|administrative_area|prefecture)$/i,
     country: /^(country|nation|nationality|country_code|country_name)$/i,
-    postalCode: /^(zip|postal_code|postcode|zip_code|pincode|postal)$/i
+    postalCode: /^(zip|postal_code|postcode|zip_code|pincode|pin_code|pin|zipcode|postal)$/i
   };
 
   detectGeoColumns(columns: ColumnInfo[]): GeoColumnAnalysis {
@@ -56,7 +56,7 @@ class GeoColumnDetector {
         geoColumnCount++;
       }
       
-      // Check for postal code patterns
+      // Enhanced postal code patterns - now includes pincode variations
       if (this.geoPatterns.postalCode.test(columnName) || column.dataType === 'Postal Code') {
         mapping.postalCode = column.name;
         geoColumnCount++;

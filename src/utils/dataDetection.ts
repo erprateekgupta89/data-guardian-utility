@@ -143,7 +143,9 @@ export const inferTypeFromColumnName = (columnName: string): DataType | null => 
   if (/city|town|municipality/.test(name)) return 'City';
   if (/state|province|region/.test(name)) return 'State';
   if (/country|nation/.test(name)) return 'Country';
-  if (/zip|postal|pin.?code/.test(name)) return 'Postal Code';
+  
+  // Enhanced postal code patterns - now includes pincode and all variations
+  if (/zip|postal|pin.?code|pincode|zipcode|postcode/.test(name)) return 'Postal Code';
   
   // Personal information
   if (/gender|sex/.test(name)) return 'Gender';
