@@ -1,4 +1,3 @@
-
 import { AzureOpenAIService, GeneratedAddress, type AzureOpenAIConfig, type BatchAddressGenerationRequest } from '@/services/azureOpenAI';
 import { EnhancedAddressGenerator, type EnhancedMaskingOptions } from './enhancedAddressGeneration';
 import { GeoColumnDetector, type GeoColumnMapping } from './geoColumnDetection';
@@ -56,7 +55,7 @@ class AzureOpenAIMasking {
     columns: any[],
     countryColumnName?: string
   ): Promise<void> {
-    console.log('=== Simplified Dataset Initialization ===');
+    console.log('=== FIXED: Simplified Dataset Initialization ===');
     
     // Detect geo columns
     const geoAnalysis = this.geoDetector.detectGeoColumns(columns);
@@ -70,10 +69,10 @@ class AzureOpenAIMasking {
       console.log('Created preservation rules:', this.preservationRules.length);
     }
 
-    // Use enhanced address generation with SINGLE batch call
+    // FIXED: Use enhanced address generation with SINGLE batch call
     await this.preGenerateAddresses(data, countryColumnName);
 
-    console.log('Simplified initialization complete');
+    console.log('FIXED: Initialization complete - all addresses pre-generated');
   }
 
   private async preGenerateAddresses(
@@ -81,20 +80,26 @@ class AzureOpenAIMasking {
     countryColumnName?: string
   ): Promise<void> {
     try {
-      console.log('=== Pre-generating addresses with SINGLE batch call ===');
+      console.log('=== FIXED: Pre-generating ALL addresses with SINGLE batch call ===');
       
       if (!countryColumnName) {
-        // If no country column, use selected countries
+        // FIXED: If no country column, use selected countries with exact distribution
         const countries = this.options.selectedCountries || ['United States'];
-        const addressesPerCountry = Math.ceil(data.length / countries.length);
+        const totalRows = data.length;
+        
+        console.log(`FIXED: No country column - distributing ${totalRows} rows across ${countries.length} countries`);
         
         const batchRequest: BatchAddressGenerationRequest = {
-          countries: countries.map(country => ({
-            country,
-            count: addressesPerCountry
-          }))
+          countries: countries.map((country, index) => {
+            const startRow = Math.floor((index * totalRows) / countries.length);
+            const endRow = Math.floor(((index + 1) * totalRows) / countries.length);
+            const count = endRow - startRow;
+            console.log(`FIXED: ${country} gets ${count} addresses (rows ${startRow}-${endRow-1})`);
+            return { country, count };
+          })
         };
 
+        console.log('FIXED: Pre-generation batch request:', batchRequest);
         const batchResponse = await this.service.generateBatchAddresses(batchRequest);
         this.countryAddressMap = batchResponse.addressesByCountry;
         
@@ -103,7 +108,9 @@ class AzureOpenAIMasking {
           this.countryIndexMap.set(country, 0);
         }
       } else {
-        // Use enhanced generator for optimized addresses
+        console.log(`FIXED: Using country column "${countryColumnName}" for exact requirements`);
+        
+        // FIXED: Use enhanced generator for optimized addresses with exact counting
         const optimizedAddresses = await this.enhancedGenerator.generateOptimizedAddresses(
           data,
           countryColumnName,
@@ -112,19 +119,22 @@ class AzureOpenAIMasking {
         
         this.countryAddressMap = optimizedAddresses;
         
-        // Initialize index counters
+        // Initialize index counters for ALL generated countries
         for (const country of optimizedAddresses.keys()) {
           this.countryIndexMap.set(country, 0);
+          console.log(`FIXED: Initialized counter for ${country}: ${optimizedAddresses.get(country)?.length} addresses available`);
         }
       }
       
-      console.log(`✅ Pre-generated addresses for ${this.countryAddressMap.size} countries`);
+      console.log(`✅ FIXED: Pre-generated addresses for ${this.countryAddressMap.size} countries`);
       for (const [country, addresses] of this.countryAddressMap.entries()) {
-        console.log(`- ${country}: ${addresses.length} addresses`);
+        console.log(`- FIXED: ${country}: ${addresses.length} addresses ready`);
       }
       
     } catch (error) {
-      console.error('❌ Pre-generation failed:', error);
+      console.error('❌ FIXED: Pre-generation failed:', error);
+      // FIXED: Don't leave empty map - this prevents fallbacks
+      this.countryAddressMap = new Map();
     }
   }
 
@@ -133,22 +143,29 @@ class AzureOpenAIMasking {
 
     const country = targetCountry || this.options.country || 'United States';
     
-    // Ensure we have addresses for this country
+    console.log(`FIXED: maskData called for ${dataType} in ${country}`);
+    
+    // FIXED: Strict check - NO fallback API calls allowed
     if (!this.countryAddressMap.has(country)) {
-      const addresses = await this.enhancedGenerator.getAddressesForCountry(country, 10);
-      this.countryAddressMap.set(country, addresses);
-      this.countryIndexMap.set(country, 0);
+      console.error(`❌ FIXED: Country "${country}" not found in pre-generated addresses!`);
+      console.log('Available countries:', Array.from(this.countryAddressMap.keys()));
+      // FIXED: Return original value instead of making API call
+      return value;
     }
 
     const addresses = this.countryAddressMap.get(country)!;
     if (addresses.length === 0) {
-      return value; // Fallback to original value
+      console.error(`❌ FIXED: No addresses available for country "${country}"`);
+      // FIXED: Return original value instead of making API call
+      return value;
     }
 
     // Get current index and increment (with wrapping)
     let currentIndex = this.countryIndexMap.get(country) || 0;
     const address = addresses[currentIndex % addresses.length];
     this.countryIndexMap.set(country, currentIndex + 1);
+
+    console.log(`FIXED: Using address ${currentIndex} for ${country} (${dataType})`);
 
     // Get the appropriate field from the address
     let maskedValue = '';

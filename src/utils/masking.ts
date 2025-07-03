@@ -154,16 +154,17 @@ interface MaskingOptions {
   azureOpenAIConfig?: AzureOpenAIMaskingOptions;
 }
 
-// Enhanced process and mask all data
+// Enhanced process and mask all data with FIXED API call logic
 export const maskDataSet = async (
   data: Record<string, string>[],
   columns: ColumnInfo[],
   options?: MaskingOptions
 ): Promise<Record<string, string>[]> => {
-  console.log('=== Starting Enhanced Masking Process with Constant Value Detection ===');
-  console.log('Data rows:', data.length);
-  console.log('Columns:', columns.length);
-  console.log('Azure OpenAI enabled:', options?.useAzureOpenAI);
+  console.log('=== FIXED: Starting Enhanced Masking Process ===');
+  console.log(`Data rows: ${data.length}`);
+  console.log(`Columns: ${columns.length}`);
+  console.log(`Azure OpenAI enabled: ${options?.useAzureOpenAI}`);
+  console.log(`Selected countries: ${options?.selectedCountries?.join(', ') || 'None'}`);
 
   // --- Pre-masking: Re-infer and correct column data types ---
   columns.forEach(col => {
@@ -207,10 +208,10 @@ export const maskDataSet = async (
     }
   });
 
-  // Initialize Enhanced Azure OpenAI masking if enabled
+  // FIXED: Initialize Enhanced Azure OpenAI masking if enabled
   let azureOpenAIMasking: AzureOpenAIMasking | null = null;
   if (options?.useAzureOpenAI && options?.azureOpenAIConfig) {
-    console.log('Initializing Enhanced Azure OpenAI masking system...');
+    console.log('=== FIXED: Initializing Enhanced Azure OpenAI masking system ===');
     azureOpenAIMasking = new AzureOpenAIMasking({
       ...options.azureOpenAIConfig,
       preserveDataStructure: true,
@@ -219,21 +220,23 @@ export const maskDataSet = async (
     
     // Find country column for proportional masking
     const countryColumn = columns.find(col => col.name.toLowerCase() === 'country');
+    console.log(`FIXED: Country column found: ${countryColumn?.name || 'None'}`);
     
-    // Initialize the enhanced system with the dataset and full column info
+    // FIXED: Initialize the enhanced system with exact dataset requirements
+    console.log('FIXED: Initializing Azure OpenAI system with exact dataset...');
     await azureOpenAIMasking.initializeForDataset(
       workingData,
       columns,
       countryColumn?.name
     );
     
-    console.log('Enhanced Azure OpenAI system initialized');
+    console.log('✅ FIXED: Enhanced Azure OpenAI system initialized - NO MORE API CALLS should be made');
   }
   
-  console.log('Starting row-by-row masking with enhanced constant value handling...');
+  console.log('=== FIXED: Starting row-by-row masking (using pre-generated data only) ===');
   return Promise.all(workingData.map(async (row, index) => {
-    if (index % 100 === 0) {
-      console.log(`Processing row ${index + 1}/${workingData.length}`);
+    if (index % 50 === 0) {
+      console.log(`FIXED: Processing row ${index + 1}/${workingData.length}`);
     }
 
     const maskedRow: Record<string, string> = {};
@@ -254,7 +257,7 @@ export const maskDataSet = async (
         const randomIndex = Math.floor(Math.random() * options.selectedCountries.length);
         maskedRow[column.name] = options.selectedCountries[randomIndex];
       } else if (azureOpenAIMasking && ['Address', 'City', 'State', 'Postal Code'].includes(column.dataType)) {
-        // Use Enhanced Azure OpenAI for location data if enabled
+        // FIXED: Use Enhanced Azure OpenAI for location data (NO fallback API calls)
         try {
           let targetCountry = options?.selectedCountries?.[0] || 'United States';
           
@@ -263,14 +266,15 @@ export const maskDataSet = async (
             targetCountry = row[countryColumn.name];
           }
           
+          console.log(`FIXED: Row ${index} - Using Azure OpenAI for ${column.dataType} in ${targetCountry}`);
           maskedRow[column.name] = await azureOpenAIMasking.maskData(
             row[column.name], 
             column.dataType,
             targetCountry
           );
         } catch (error) {
-          console.error(`Enhanced Azure OpenAI masking failed for ${column.name} at row ${index}:`, error);
-          // Fallback to regular masking with pattern analysis
+          console.error(`❌ FIXED: Azure OpenAI masking failed for ${column.name} at row ${index}:`, error);
+          // FIXED: Fallback to regular masking (no API calls)
           maskedRow[column.name] = maskData(
             row[column.name], 
             column.dataType,

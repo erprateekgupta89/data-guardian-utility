@@ -48,19 +48,30 @@ class EnhancedAddressGenerator {
     countryColumnName: string,
     selectedCountries?: string[]
   ): Promise<Map<string, GeneratedAddress[]>> {
-    console.log('=== Starting Optimized Batch Address Generation ===');
+    console.log('=== FIXED: Starting Optimized Batch Address Generation ===');
+    console.log(`Total rows in dataset: ${data.length}`);
+    console.log(`Country column: ${countryColumnName}`);
+    console.log(`Selected countries override: ${selectedCountries?.join(', ') || 'None'}`);
     
-    // Calculate exact country requirements
+    // FIXED: Calculate exact country requirements from actual data
     const countryRequirements = this.calculateExactCountryRequirements(
       data,
       countryColumnName,
       selectedCountries
     );
 
-    console.log('Country requirements:', countryRequirements);
+    console.log('=== FIXED: Exact Country Requirements ===');
+    countryRequirements.forEach(req => {
+      console.log(`${req.country}: ${req.count} occurrences (rows: ${req.rowIndices.slice(0, 5).join(', ')}${req.rowIndices.length > 5 ? '...' : ''})`);
+    });
 
-    // Use SINGLE batch API call for ALL countries
+    // FIXED: Use SINGLE batch API call for ALL countries
     const countryAddressMap = await this.generateSingleBatchCall(countryRequirements);
+
+    console.log('=== FIXED: Final Address Map ===');
+    for (const [country, addresses] of countryAddressMap.entries()) {
+      console.log(`${country}: Generated ${addresses.length} addresses`);
+    }
 
     return countryAddressMap;
   }
@@ -70,15 +81,18 @@ class EnhancedAddressGenerator {
     countryColumnName: string,
     selectedCountries?: string[]
   ): CountryRequirement[] {
+    console.log('=== FIXED: Calculating Exact Country Requirements ===');
     const countryMap = new Map<string, number[]>();
 
-    // Iterate through entire dataset to count exact occurrences
+    // FIXED: Count exact occurrences in the actual dataset - no rounding, no proportions
     data.forEach((row, index) => {
       let country = row[countryColumnName]?.trim();
       
-      // Use selected countries if country dropdown is enabled
+      // FIXED: Use selected countries distribution if provided
       if (selectedCountries && selectedCountries.length > 0) {
-        country = selectedCountries[Math.floor(Math.random() * selectedCountries.length)];
+        // Distribute rows across selected countries in order
+        country = selectedCountries[index % selectedCountries.length];
+        console.log(`Row ${index}: Original="${row[countryColumnName]?.trim()}" -> Assigned="${country}"`);
       }
 
       if (country) {
@@ -89,24 +103,32 @@ class EnhancedAddressGenerator {
       }
     });
 
-    return Array.from(countryMap.entries()).map(([country, rowIndices]) => ({
+    const requirements = Array.from(countryMap.entries()).map(([country, rowIndices]) => ({
       country,
       count: rowIndices.length,
       rowIndices
     }));
+
+    console.log('=== FIXED: Country Requirements Summary ===');
+    requirements.forEach(req => {
+      console.log(`${req.country}: Exactly ${req.count} addresses needed`);
+    });
+
+    return requirements;
   }
 
   private async generateSingleBatchCall(
     countryRequirements: CountryRequirement[]
   ): Promise<Map<string, GeneratedAddress[]>> {
     if (countryRequirements.length === 0) {
+      console.log('❌ FIXED: No country requirements - returning empty map');
       return new Map();
     }
 
     try {
-      console.log('=== SINGLE BATCH API CALL FOR ALL COUNTRIES ===');
+      console.log('=== FIXED: Making SINGLE BATCH API CALL ===');
       
-      // Create ONE batch request for ALL countries
+      // FIXED: Create ONE batch request for ALL countries with exact counts
       const batchRequest: BatchAddressGenerationRequest = {
         countries: countryRequirements.map(req => ({
           country: req.country,
@@ -114,19 +136,22 @@ class EnhancedAddressGenerator {
         }))
       };
 
-      console.log('Batch request:', batchRequest);
+      console.log('=== FIXED: Single Batch Request ===');
+      console.log(JSON.stringify(batchRequest, null, 2));
 
-      // ONE API call for everything
+      // FIXED: ONE API call for everything - this should be the ONLY API call
+      console.log('🚀 FIXED: Making the ONE AND ONLY Azure OpenAI API call...');
       const batchResponse = await this.options.azureService.generateBatchAddresses(batchRequest);
       
-      console.log(`✅ Generated addresses for ${batchResponse.addressesByCountry.size} countries in ONE API call`);
+      console.log(`✅ FIXED: Single batch call completed!`);
+      console.log(`Generated addresses for ${batchResponse.addressesByCountry.size} countries`);
       console.log('Batch response metadata:', batchResponse.metadata);
 
       return batchResponse.addressesByCountry;
 
     } catch (error) {
-      console.error('❌ Batch generation failed:', error);
-      // Return empty map instead of falling back to individual calls
+      console.error('❌ FIXED: Single batch generation failed:', error);
+      // FIXED: Return empty map to prevent fallback API calls
       return new Map();
     }
   }
