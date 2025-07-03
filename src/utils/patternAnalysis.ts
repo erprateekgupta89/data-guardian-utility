@@ -39,11 +39,12 @@ class PatternAnalyzer {
       };
     }
 
-    // Look for common prefix pattern (e.g., "Campaign_1", "Campaign_2") only if not constant
+    // Look for common prefix pattern (e.g., "Campaign_1", "Campaign_2", "TestCampaign1", "TestCampaign2") only if not constant
     const prefixPattern = this.detectCommonPrefix(nonEmptyValues);
     
     if (prefixPattern.hasPrefix) {
       const numbers = this.extractNumbers(nonEmptyValues, prefixPattern.prefix);
+      console.log(`✅ Pattern detected - Prefix: "${prefixPattern.prefix}", Numbers: [${numbers.slice(0, 5).join(', ')}${numbers.length > 5 ? '...' : ''}]`);
       return {
         hasPrefix: true,
         prefix: prefixPattern.prefix,
@@ -54,6 +55,7 @@ class PatternAnalyzer {
       };
     }
 
+    console.log(`❌ No pattern detected for values: [${nonEmptyValues.slice(0, 3).join(', ')}${nonEmptyValues.length > 3 ? '...' : ''}]`);
     return {
       hasPrefix: false,
       prefix: '',
@@ -113,37 +115,84 @@ class PatternAnalyzer {
   private detectCommonPrefix(values: string[]): { hasPrefix: boolean; prefix: string; basePattern: string } {
     if (values.length < 2) return { hasPrefix: false, prefix: '', basePattern: '' };
 
+    console.log(`🔍 Analyzing prefix patterns for ${values.length} values:`, values.slice(0, 3));
+
+    // Strategy 1: Find longest common prefix among all values
+    let commonPrefix = values[0];
+    for (let i = 1; i < values.length; i++) {
+      const current = values[i];
+      let j = 0;
+      while (j < Math.min(commonPrefix.length, current.length) && commonPrefix[j] === current[j]) {
+        j++;
+      }
+      commonPrefix = commonPrefix.substring(0, j);
+      
+      // If common prefix becomes too short, break early
+      if (commonPrefix.length < 2) break;
+    }
+
+    console.log(`🔍 Initial common prefix: "${commonPrefix}"`);
+
+    // Strategy 2: If we have a common prefix, check if it forms a valid pattern
+    if (commonPrefix.length >= 2) {
+      // Check if all values follow the pattern: prefix + number
+      const patternMatches = values.filter(value => {
+        if (!value.startsWith(commonPrefix)) return false;
+        const suffix = value.substring(commonPrefix.length);
+        return /^\d+$/.test(suffix); // Suffix must be purely numeric
+      });
+
+      const matchPercentage = patternMatches.length / values.length;
+      console.log(`🔍 Pattern matches: ${patternMatches.length}/${values.length} (${(matchPercentage * 100).toFixed(1)}%)`);
+
+      if (matchPercentage >= 0.7) {
+        console.log(`✅ Direct number pattern detected: "${commonPrefix}" + numbers`);
+        return {
+          hasPrefix: true,
+          prefix: commonPrefix,
+          basePattern: commonPrefix // No separator needed
+        };
+      }
+    }
+
+    // Strategy 3: Look for prefix with separators (original logic)
     // Find common prefix by comparing first two values
     const first = values[0];
     const second = values[1];
     
-    let commonPrefix = '';
+    let prefixWithSeparator = '';
     for (let i = 0; i < Math.min(first.length, second.length); i++) {
       if (first[i] === second[i]) {
-        commonPrefix += first[i];
+        prefixWithSeparator += first[i];
       } else {
         break;
       }
     }
 
+    console.log(`🔍 Prefix with separator attempt: "${prefixWithSeparator}"`);
+
     // Check if this prefix pattern holds for most values (at least 70%)
-    if (commonPrefix.length > 0) {
-      const matchingCount = values.filter(v => v.startsWith(commonPrefix)).length;
+    if (prefixWithSeparator.length > 0) {
+      const matchingCount = values.filter(v => v.startsWith(prefixWithSeparator)).length;
       const matchPercentage = matchingCount / values.length;
+      
+      console.log(`🔍 Separator pattern matches: ${matchingCount}/${values.length} (${(matchPercentage * 100).toFixed(1)}%)`);
       
       if (matchPercentage >= 0.7) {
         // Look for common separators after prefix
         const separatorPattern = /[_\-\s]+\d+$/;
-        const basePattern = commonPrefix + (separatorPattern.test(first) ? '_' : '');
+        const basePattern = prefixWithSeparator + (separatorPattern.test(first) ? '_' : '');
         
+        console.log(`✅ Separator pattern detected: "${basePattern}"`);
         return {
           hasPrefix: true,
-          prefix: commonPrefix,
+          prefix: prefixWithSeparator,
           basePattern
         };
       }
     }
 
+    console.log(`❌ No valid prefix pattern found`);
     return { hasPrefix: false, prefix: '', basePattern: '' };
   }
 
@@ -160,7 +209,9 @@ class PatternAnalyzer {
       }
     });
 
-    return numbers.sort((a, b) => a - b);
+    const sortedNumbers = numbers.sort((a, b) => a - b);
+    console.log(`🔢 Extracted numbers: [${sortedNumbers.slice(0, 10).join(', ')}${sortedNumbers.length > 10 ? '...' : ''}]`);
+    return sortedNumbers;
   }
 
   generatePatternBasedValue(pattern: PatternAnalysis, index: number): string {
@@ -174,7 +225,10 @@ class PatternAnalyzer {
       : 0;
     
     const newNumber = maxNumber + index + 1;
-    return `${pattern.basePattern}${newNumber}`;
+    const generatedValue = `${pattern.basePattern}${newNumber}`;
+    
+    console.log(`🎯 Generated pattern value: "${generatedValue}" (index: ${index}, max: ${maxNumber})`);
+    return generatedValue;
   }
 }
 
