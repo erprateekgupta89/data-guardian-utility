@@ -1,10 +1,9 @@
+
 export type DataType = 
   | 'Email'
   | 'Address'
   | 'Country'
   | 'Name'
-  // | 'First Name'
-  // | 'Last Name'
   | 'Phone Number'
   | 'Int'
   | 'Float'
@@ -23,6 +22,9 @@ export type DataType =
   | 'Text'
   | 'Password'
   | 'Nationality'
+  | 'Credit Card'
+  | 'Debit Card'
+  | 'Sequential'
   | 'Unknown';
 
 export interface ColumnInfo {
@@ -32,6 +34,11 @@ export interface ColumnInfo {
   sampleData: string;
   skip: boolean;
   userModified?: boolean;
+  isConstant?: boolean;
+  isSequential?: boolean;
+  cardType?: 'visa' | 'mastercard' | 'amex' | 'discover';
+  geoRegion?: string;
+  preservePattern?: boolean;
 }
 
 export interface FileData {
@@ -41,6 +48,7 @@ export interface FileData {
   data: Record<string, string>[];
   originalData: Record<string, string>[];
   totalRows: number;
+  countryProportions?: Record<string, number>;
 }
 
 export type ExportFormat = 'CSV' | 'Excel' | 'SQL' | 'XML' | 'JSON';
@@ -51,5 +59,25 @@ export interface MaskingConfig {
   tableName: string;
   useCountryDropdown?: boolean;
   selectedCountries?: string[];
+  hybridMode?: boolean;
+  aiOptimization?: boolean;
+  batchSize?: number;
+  qualityThreshold?: number;
 }
 
+export interface MaskingStats {
+  totalRows: number;
+  processedRows: number;
+  aiProcessedRows: number;
+  ruleBasedRows: number;
+  processingTime: number;
+  qualityScore: number;
+}
+
+export interface GeoReference {
+  country: string;
+  cities: string[];
+  states: string[];
+  addresses: string[];
+  postalCodes: string[];
+}
