@@ -141,12 +141,17 @@ interface MaskingOptions {
   azureOpenAIConfig?: AzureOpenAIMaskingOptions;
 }
 
-// Process and mask all data
+// Enhanced process and mask all data
 export const maskDataSet = async (
   data: Record<string, string>[],
   columns: ColumnInfo[],
   options?: MaskingOptions
 ): Promise<Record<string, string>[]> => {
+  console.log('=== Starting Enhanced Masking Process ===');
+  console.log('Data rows:', data.length);
+  console.log('Columns:', columns.length);
+  console.log('Azure OpenAI enabled:', options?.useAzureOpenAI);
+
   // --- Pre-masking: Re-infer and correct column data types ---
   columns.forEach(col => {
     if (
@@ -177,25 +182,38 @@ export const maskDataSet = async (
     }
   });
 
-  // Initialize Azure OpenAI masking if enabled
+  // Initialize Enhanced Azure OpenAI masking if enabled
   let azureOpenAIMasking: AzureOpenAIMasking | null = null;
   if (options?.useAzureOpenAI && options?.azureOpenAIConfig) {
     console.log('Initializing Enhanced Azure OpenAI masking system...');
-    azureOpenAIMasking = new AzureOpenAIMasking(options.azureOpenAIConfig);
+    azureOpenAIMasking = new AzureOpenAIMasking({
+      ...options.azureOpenAIConfig,
+      preserveDataStructure: true,
+      useIntelligentBatching: true
+    });
     
     // Find country column for proportional masking
     const countryColumn = columns.find(col => col.name.toLowerCase() === 'country');
     
-    // Initialize the enhanced system with the dataset
+    // Initialize the enhanced system with the dataset and full column info
     await azureOpenAIMasking.initializeForDataset(
       workingData,
+      columns,
       countryColumn?.name
     );
     
-    console.log('Enhanced Azure OpenAI system initialized with countries:', azureOpenAIMasking.getLoadedCountries());
+    console.log('Enhanced Azure OpenAI system initialized with:');
+    console.log('- Countries:', azureOpenAIMasking.getLoadedCountries());
+    console.log('- Geo mapping:', azureOpenAIMasking.getGeoMapping());
+    console.log('- Preservation rules:', azureOpenAIMasking.getPreservationRules().length);
   }
   
+  console.log('Starting row-by-row masking...');
   return Promise.all(workingData.map(async (row, index) => {
+    if (index % 100 === 0) {
+      console.log(`Processing row ${index + 1}/${workingData.length}`);
+    }
+
     const maskedRow: Record<string, string> = {};
     
     for (const column of columns) {

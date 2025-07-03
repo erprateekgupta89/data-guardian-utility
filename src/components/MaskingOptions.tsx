@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, Info, Settings, Eye, EyeOff } from 'lucide-react';
+import { Check, Info, Settings, Eye, EyeOff, Cpu, Database, Zap } from 'lucide-react';
 import { ColumnInfo, FileData, MaskingConfig, AzureOpenAISettings } from '@/types';
 import { maskDataSet } from '@/utils/masking';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -104,7 +104,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
 
     setTestingConnection(true);
     try {
-      console.log('=== Testing Azure OpenAI Connection ===');
+      console.log('=== Testing Enhanced Azure OpenAI Connection ===');
       console.log('Configuration:', {
         endpoint: azureOpenAI.endpoint,
         apiVersion: azureOpenAI.apiVersion,
@@ -114,11 +114,13 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
 
       const azureMasking = new AzureOpenAIMasking({
         config: {
-          endpoint: azureOpenAI.endpoint,  // Use the full endpoint directly
+          endpoint: azureOpenAI.endpoint,
           apiKey: azureOpenAI.apiKey,
           apiVersion: azureOpenAI.apiVersion,
           deploymentName: azureOpenAI.deploymentName
-        }
+        },
+        preserveDataStructure: true,
+        useIntelligentBatching: true
       });
 
       const isConnected = await azureMasking.testConnection();
@@ -126,7 +128,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
       if (isConnected) {
         toast({
           title: "Connection Successful",
-          description: "Enhanced Azure OpenAI connection is working properly with geographic accuracy features.",
+          description: "Enhanced Azure OpenAI connection established with intelligent geo-masking capabilities.",
         });
       } else {
         toast({
@@ -172,12 +174,14 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
       
       try {
         console.log('Starting enhanced masking process...');
-        console.log('Azure OpenAI Config:', {
+        console.log('Enhanced Azure OpenAI Config:', {
           enabled: azureOpenAI.enabled,
           endpoint: azureOpenAI.endpoint,
           deploymentName: azureOpenAI.deploymentName,
           apiVersion: azureOpenAI.apiVersion,
-          hasApiKey: !!azureOpenAI.apiKey
+          hasApiKey: !!azureOpenAI.apiKey,
+          dataPreservation: true,
+          intelligentBatching: true
         });
 
         const maskedData = await maskDataSet(
@@ -189,13 +193,15 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
             useAzureOpenAI: azureOpenAI.enabled,
             azureOpenAIConfig: azureOpenAI.enabled ? {
               config: {
-                endpoint: azureOpenAI.endpoint,  // Use the full endpoint directly
+                endpoint: azureOpenAI.endpoint,
                 apiKey: azureOpenAI.apiKey,
                 apiVersion: azureOpenAI.apiVersion,
                 deploymentName: azureOpenAI.deploymentName
               },
               country: selectedCountry,
-              selectedCountries: [selectedCountry]
+              selectedCountries: [selectedCountry],
+              preserveDataStructure: true,
+              useIntelligentBatching: true
             } : undefined
           }
         );
@@ -204,16 +210,16 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
         setProgress(100);
         
         toast({
-          title: "Masking Complete",
+          title: "Enhanced Masking Complete",
           description: azureOpenAI.enabled 
-            ? "Data successfully masked using enhanced AI with geographic accuracy."
+            ? "Data successfully masked using enhanced AI with intelligent geo-masking, data preservation, and intelligent batching."
             : "Data successfully masked using standard methods.",
         });
         
         onDataMasked(maskedData, maskingConfig);
       } catch (error) {
         clearInterval(progressInterval);
-        console.error('Error during masking:', error);
+        console.error('Error during enhanced masking:', error);
         toast({
           title: "Masking Error",
           description: `An error occurred while masking the data: ${error.message || 'Unknown error'}. Please check the console for details.`,
@@ -255,7 +261,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
             </div>
             <div className="text-white text-sm">
               {azureOpenAI.enabled 
-                ? 'Generating geographically accurate addresses using AI...' 
+                ? 'Applying intelligent geo-masking with data preservation...' 
                 : 'Please wait while your data is being masked.'}
             </div>
             <div className="mt-4 w-48">
@@ -270,20 +276,31 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-lg font-medium">
             <div className="flex items-center">
-              Masking Options
+              Enhanced Masking Options
               {azureOpenAI.enabled && hasLocationColumns && (
-                <Badge variant="secondary" className="ml-2 text-xs">
-                  Enhanced AI Enabled
-                </Badge>
+                <div className="flex items-center ml-2 space-x-1">
+                  <Badge variant="secondary" className="text-xs">
+                    <Cpu className="h-3 w-3 mr-1" />
+                    AI Enhanced
+                  </Badge>
+                  <Badge variant="outline" className="text-xs">
+                    <Database className="h-3 w-3 mr-1" />
+                    Data Preservation
+                  </Badge>
+                  <Badge variant="outline" className="text-xs">
+                    <Zap className="h-3 w-3 mr-1" />
+                    Smart Batching
+                  </Badge>
+                </div>
               )}
             </div>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-4">
-            {/* Azure OpenAI Enhanced Masking */}
+            {/* Enhanced Azure OpenAI Masking */}
             {hasLocationColumns && (
-              <div className="space-y-3 border rounded-lg p-4 bg-blue-50">
+              <div className="space-y-3 border rounded-lg p-4 bg-gradient-to-r from-blue-50 to-purple-50">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <Label htmlFor="azureOpenAI" className="cursor-pointer font-medium">
@@ -296,9 +313,14 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
                             <Info className="h-4 w-4 text-blue-500" />
                           </div>
                         </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
+                        <TooltipContent className="max-w-sm">
                           <p>
-                            Use Azure OpenAI to generate realistic, geographically accurate addresses with intelligent country distribution, regional diversity, and format validation.
+                            Advanced Azure OpenAI integration with:
+                            • Intelligent geo-column detection
+                            • Data structure preservation 
+                            • Smart batching strategies
+                            • Regional consistency validation
+                            • Enhanced geographic accuracy
                           </p>
                         </TooltipContent>
                       </Tooltip>
@@ -318,14 +340,14 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
                         <DialogTrigger asChild>
                           <Button variant="outline" size="sm">
                             <Settings className="h-4 w-4 mr-2" />
-                            Configure Azure OpenAI
+                            Configure Enhanced AI
                           </Button>
                         </DialogTrigger>
                         <DialogContent className="sm:max-w-[500px]">
                           <DialogHeader>
                             <DialogTitle>Enhanced Azure OpenAI Configuration</DialogTitle>
                             <DialogDescription>
-                              Configure your Azure OpenAI settings for enhanced geographic data masking with intelligent address generation
+                              Configure your Azure OpenAI settings for advanced geo-masking with intelligent data preservation and batching optimization
                             </DialogDescription>
                           </DialogHeader>
                           <div className="space-y-4 py-4">
@@ -392,7 +414,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
                                 disabled={testingConnection}
                                 className="flex-1"
                               >
-                                {testingConnection ? 'Testing...' : 'Test Connection'}
+                                {testingConnection ? 'Testing...' : 'Test Enhanced Connection'}
                               </Button>
                               <Button onClick={() => setAzureDialogOpen(false)} className="flex-1">
                                 Save Settings
@@ -410,8 +432,15 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
                     </div>
                     
                     {azureOpenAI.enabled && (
-                      <div className="text-xs text-blue-600 bg-blue-100 p-2 rounded">
-                        <strong>Enhanced Features:</strong> Real Azure OpenAI API calls for geographically accurate addresses, regional diversity, country proportion preservation, intelligent caching, and format validation.
+                      <div className="text-xs text-blue-600 bg-blue-100 p-3 rounded border-l-4 border-blue-400">
+                        <strong>Enhanced Features Active:</strong>
+                        <ul className="mt-1 space-y-1 list-disc list-inside">
+                          <li>Intelligent geo-column detection and processing</li>
+                          <li>Data structure and format preservation</li>
+                          <li>Smart batching with performance optimization</li> 
+                          <li>Regional consistency and validation</li>
+                          <li>Advanced caching and reuse strategies</li>
+                        </ul>
                       </div>
                     )}
                   </div>
