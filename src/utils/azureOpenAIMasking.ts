@@ -64,8 +64,9 @@ class AzureOpenAIMasking {
   ): Promise<void> {
     console.log('=== Enhanced Dataset Initialization ===');
     
-    // Detect geo columns
-    this.geoMapping = this.geoDetector.detectGeoColumns(columns);
+    // Detect geo columns and extract just the mapping
+    const geoAnalysis = this.geoDetector.detectGeoColumns(columns);
+    this.geoMapping = geoAnalysis.mapping;
     console.log('Detected geo mapping:', this.geoMapping);
 
     // Create preservation rules if enabled
