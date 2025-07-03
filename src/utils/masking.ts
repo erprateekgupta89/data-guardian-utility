@@ -1,7 +1,7 @@
 
 import { ColumnInfo, DataType, MaskingConfig, MaskingStats } from "@/types";
 import { hybridMaskDataSet } from "./hybridMasking";
-import { detectColumnDataType, analyzeColumn } from "./enhancedDataDetection";
+import { enhancedDetectDataType, analyzeColumn } from "./enhancedDataDetection";
 import { smartMaskData } from "./intelligentMasking";
 
 // Calculate country proportions for large datasets
@@ -40,7 +40,7 @@ export const enhanceColumnInfo = (
     const analysis = analyzeColumn(values, col.name);
     
     // Re-detect data type with enhanced detection
-    const enhancedType = detectColumnDataType(values, col.name);
+    const enhancedType = enhancedDetectDataType(values[0] || '', col.name);
     
     return {
       ...col,
