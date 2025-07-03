@@ -10,9 +10,10 @@ import { PatternAnalyzer, type PatternAnalysis } from "./patternAnalysis";
 export const maskData = (value: string, dataType: DataType, format?: string, constantValues?: string[], patternAnalysis?: PatternAnalysis, index?: number): string => {
   if (!value || value.trim() === '') return value;
   
-  // PRIORITY 1: Use pattern analysis for String data type if available
-  if (dataType === 'String' && patternAnalysis && patternAnalysis.hasPrefix && typeof index === 'number') {
+  // PRIORITY 1: Use pattern analysis for ANY data type if pattern is detected
+  if (patternAnalysis && patternAnalysis.hasPrefix && typeof index === 'number') {
     const patternAnalyzer = new PatternAnalyzer();
+    console.log(`Using pattern analysis for ${dataType}: ${patternAnalysis.prefix} (index: ${index})`);
     return patternAnalyzer.generatePatternBasedValue(patternAnalysis, index);
   }
 
@@ -178,24 +179,24 @@ export const maskDataSet = async (
   // Use all the data instead of just a sample
   const workingData = data;
   
-  // Get unique values for each column
+  // Get unique values for each column AND analyze patterns for ALL columns
   const columnUniqueValues: Record<string, string[]> = {};
   const columnPatterns: Record<string, PatternAnalysis> = {};
   const patternAnalyzer = new PatternAnalyzer();
   
   columns.forEach(column => {
     // Only get unique values if the column has less than 20 unique values
-    // This helps identify columns with constant/fixed values
     const uniqueValues = getUniqueValues(workingData, column.name);
     if (uniqueValues.length < 20) {
       columnUniqueValues[column.name] = uniqueValues;
     }
 
-    // Analyze patterns for String columns to detect prefixes
-    if (column.dataType === 'String') {
-      const allValues = workingData.map(row => row[column.name]).filter(Boolean);
-      columnPatterns[column.name] = patternAnalyzer.analyzeColumnPattern(allValues);
-      console.log(`Pattern analysis for ${column.name}:`, columnPatterns[column.name]);
+    // Analyze patterns for ALL columns (not just String type)
+    const allValues = workingData.map(row => row[column.name]).filter(Boolean);
+    columnPatterns[column.name] = patternAnalyzer.analyzeColumnPattern(allValues);
+    
+    if (columnPatterns[column.name].hasPrefix) {
+      console.log(`✅ Pattern detected for ${column.name} (${column.dataType}):`, columnPatterns[column.name]);
     }
   });
 
@@ -219,10 +220,7 @@ export const maskDataSet = async (
       countryColumn?.name
     );
     
-    console.log('Enhanced Azure OpenAI system initialized with:');
-    console.log('- Countries:', azureOpenAIMasking.getLoadedCountries());
-    console.log('- Geo mapping:', azureOpenAIMasking.getGeoMapping());
-    console.log('- Preservation rules:', azureOpenAIMasking.getPreservationRules().length);
+    console.log('Enhanced Azure OpenAI system initialized');
   }
   
   console.log('Starting row-by-row masking...');
@@ -235,27 +233,24 @@ export const maskDataSet = async (
     
     for (const column of columns) {
       if (column.skip) {
-        // If skip is true, preserve the original data without any masking
         maskedRow[column.name] = row[column.name];
       } else if (column.name.toLowerCase() === 'country' && !options?.useCountryDropdown) {
-        // If it's a country column and useCountryDropdown is false, use the original country data
         maskedRow[column.name] = maskData(
           row[column.name], 
           column.dataType,
           row[column.name], 
-          columnUniqueValues[column.name]
+          columnUniqueValues[column.name],
+          columnPatterns[column.name],
+          index
         );
       } else if (column.name.toLowerCase() === 'country' && options?.useCountryDropdown && options?.selectedCountries?.length) {
-        // If it's a country column and useCountryDropdown is true, use the selected countries
         const randomIndex = Math.floor(Math.random() * options.selectedCountries.length);
         maskedRow[column.name] = options.selectedCountries[randomIndex];
       } else if (azureOpenAIMasking && ['Address', 'City', 'State', 'Postal Code'].includes(column.dataType)) {
         // Use Enhanced Azure OpenAI for location data if enabled
         try {
-          // Determine target country for this row
           let targetCountry = options?.selectedCountries?.[0] || 'United States';
           
-          // If there's a country column and we're not using dropdown, use original country
           const countryColumn = columns.find(col => col.name.toLowerCase() === 'country');
           if (countryColumn && !options?.useCountryDropdown) {
             targetCountry = row[countryColumn.name];
@@ -268,28 +263,24 @@ export const maskDataSet = async (
           );
         } catch (error) {
           console.error(`Enhanced Azure OpenAI masking failed for ${column.name} at row ${index}:`, error);
-          // Fallback to regular masking
-          const constantValues = columnUniqueValues[column.name];
-          const patternAnalysis = columnPatterns[column.name];
+          // Fallback to regular masking with pattern analysis
           maskedRow[column.name] = maskData(
             row[column.name], 
             column.dataType,
             row[column.name],
-            constantValues,
-            patternAnalysis,
+            columnUniqueValues[column.name],
+            columnPatterns[column.name],
             index
           );
         }
       } else {
-        // Pass constant values if they exist for this column, and pattern analysis for String columns
-        const constantValues = columnUniqueValues[column.name];
-        const patternAnalysis = columnPatterns[column.name];
+        // Apply pattern analysis to ALL columns
         maskedRow[column.name] = maskData(
           row[column.name], 
           column.dataType,
-          row[column.name], // Pass original value as format
-          constantValues,
-          patternAnalysis,
+          row[column.name],
+          columnUniqueValues[column.name],
+          columnPatterns[column.name],
           index
         );
       }

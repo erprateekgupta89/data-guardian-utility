@@ -247,13 +247,13 @@ Example format:
       let totalGenerated = 0;
       const totalRequested = requestedCountries.reduce((sum, c) => sum + c.count, 0);
 
-      // Process each country's addresses
+      // Process each country's addresses with improved parsing
       for (const { country, count } of requestedCountries) {
         const countryAddresses = addressData[country] || [];
         if (Array.isArray(countryAddresses)) {
           const structuredAddresses = countryAddresses
             .slice(0, count) // Take only the requested count
-            .map((addr: string) => this.parseAddressString(addr, country))
+            .map((addr: string) => this.parseAddressStringEnhanced(addr, country))
             .filter(addr => this.isValidAddress(addr));
           
           if (structuredAddresses.length > 0) {
@@ -389,10 +389,10 @@ Example format:
 
       console.log('Parsed address strings:', addressStrings);
 
-      // Convert address strings to structured addresses
+      // Convert address strings to structured addresses with enhanced parsing
       const addresses = addressStrings
         .filter(addr => typeof addr === 'string' && addr.trim())
-        .map(addr => this.parseAddressString(addr.trim(), expectedCountry))
+        .map(addr => this.parseAddressStringEnhanced(addr.trim(), expectedCountry))
         .filter(addr => this.isValidAddress(addr));
 
       console.log('Final structured addresses:', addresses);
@@ -404,8 +404,8 @@ Example format:
     }
   }
 
-  private parseAddressString(addressString: string, expectedCountry: string): GeneratedAddress {
-    console.log('Parsing address string:', addressString);
+  private parseAddressStringEnhanced(addressString: string, expectedCountry: string): GeneratedAddress {
+    console.log('Enhanced parsing address string:', addressString);
     
     // Split by commas and clean up parts
     const parts = addressString.split(',').map(part => part.trim());
@@ -418,39 +418,105 @@ Example format:
     let country = expectedCountry;
 
     try {
-      if (parts.length >= 4) {
-        // Format: "123 Main Street, New York, NY 10001, United States"
-        street = parts[0];
-        city = parts[1];
-        
-        // Handle "NY 10001" format
-        const stateAndZip = parts[2].split(' ');
-        if (stateAndZip.length >= 2) {
-          state = stateAndZip[0];
-          postalCode = stateAndZip.slice(1).join(' ');
-        } else {
-          state = parts[2];
-          postalCode = parts[3].split(' ')[0];
-        }
-        
-        country = parts[parts.length - 1];
-      } else if (parts.length === 3) {
-        // Format: "123 Main Street, City, State/Zip"
-        street = parts[0];
-        city = parts[1];
-        const stateAndZip = parts[2].split(' ');
-        if (stateAndZip.length >= 2) {
-          state = stateAndZip[0];
-          postalCode = stateAndZip.slice(1).join(' ');
-        } else {
-          state = parts[2];
-        }
-      } else {
-        // Fallback: use the whole string as street
-        street = addressString;
-        city = 'Test City';
-        state = 'Test State';
-        postalCode = '12345';
+      // Detect address format based on country and structure
+      const format = this.detectAddressFormat(addressString, expectedCountry);
+      
+      switch (format) {
+        case 'US_FORMAT':
+          // Format: "123 Main Street, New York, NY 10001, United States"
+          if (parts.length >= 4) {
+            street = parts[0];
+            city = parts[1];
+            
+            // Handle "NY 10001" format
+            const stateAndZip = parts[2].split(' ');
+            if (stateAndZip.length >= 2) {
+              state = stateAndZip[0];
+              postalCode = stateAndZip.slice(1).join(' ');
+            } else {
+              state = parts[2];
+              postalCode = parts[3].split(' ')[0];
+            }
+            
+            country = parts[parts.length - 1];
+          }
+          break;
+          
+        case 'UK_FORMAT':
+          // Format: "45 Baker Street, London SW1A 1AA, United Kingdom"
+          if (parts.length >= 3) {
+            street = parts[0];
+            // UK format often has city and postcode together
+            const cityAndPostcode = parts[1].split(' ');
+            if (cityAndPostcode.length >= 2) {
+              city = cityAndPostcode.slice(0, -2).join(' ');
+              postalCode = cityAndPostcode.slice(-2).join(' ');
+            } else {
+              city = parts[1];
+            }
+            state = ''; // UK doesn't use states
+            country = parts[parts.length - 1];
+          }
+          break;
+          
+        case 'CANADA_FORMAT':
+          // Format: "789 Maple Street, Toronto, ON M5H 2N2, Canada"
+          if (parts.length >= 4) {
+            street = parts[0];
+            city = parts[1];
+            const provinceAndPostal = parts[2].split(' ');
+            if (provinceAndPostal.length >= 3) {
+              state = provinceAndPostal[0];
+              postalCode = provinceAndPostal.slice(1).join(' ');
+            } else {
+              state = parts[2];
+              postalCode = parts[3].split(' ')[0];
+            }
+            country = parts[parts.length - 1];
+          }
+          break;
+          
+        case 'BRAZIL_FORMAT':
+          // Format: "Rua das Flores, 123, São Paulo, SP 01001-000, Brazil"
+          if (parts.length >= 4) {
+            street = parts.slice(0, 2).join(', '); // Include street number
+            city = parts[2];
+            const stateAndZip = parts[3].split(' ');
+            if (stateAndZip.length >= 2) {
+              state = stateAndZip[0];
+              postalCode = stateAndZip.slice(1).join(' ');
+            }
+            country = parts[parts.length - 1];
+          }
+          break;
+          
+        default:
+          // Generic fallback format
+          if (parts.length >= 3) {
+            street = parts[0];
+            city = parts[1];
+            
+            if (parts.length >= 4) {
+              const stateAndZip = parts[2].split(' ');
+              if (stateAndZip.length >= 2) {
+                state = stateAndZip[0];
+                postalCode = stateAndZip.slice(1).join(' ');
+              } else {
+                state = parts[2];
+                postalCode = parts[3];
+              }
+              country = parts[parts.length - 1];
+            } else {
+              state = parts[2];
+              country = expectedCountry;
+            }
+          } else {
+            // Fallback: use the whole string as street
+            street = addressString;
+            city = 'Test City';
+            state = 'Test State';
+            postalCode = '12345';
+          }
       }
 
       // Clean up postal code (remove extra characters)
@@ -473,8 +539,40 @@ Example format:
       country: expectedCountry
     };
 
-    console.log('Parsed result:', result);
+    console.log('Enhanced parsed result:', result);
     return result;
+  }
+
+  private detectAddressFormat(addressString: string, country: string): string {
+    // Detect format based on country and address structure patterns
+    const lowerAddress = addressString.toLowerCase();
+    const lowerCountry = country.toLowerCase();
+    
+    if (lowerCountry.includes('united states') || lowerCountry.includes('usa')) {
+      return 'US_FORMAT';
+    } else if (lowerCountry.includes('united kingdom') || lowerCountry.includes('uk')) {
+      return 'UK_FORMAT';
+    } else if (lowerCountry.includes('canada')) {
+      return 'CANADA_FORMAT';
+    } else if (lowerCountry.includes('brazil')) {
+      return 'BRAZIL_FORMAT';
+    }
+    
+    // Pattern-based detection as fallback
+    if (/\b[A-Z]{2}\s+\d{5}(-\d{4})?\b/.test(addressString)) {
+      return 'US_FORMAT'; // US state code + ZIP pattern
+    } else if (/\b[A-Z]\d[A-Z]\s+\d[A-Z]\d\b/.test(addressString)) {
+      return 'CANADA_FORMAT'; // Canadian postal code pattern
+    } else if (/\b[A-Z]{1,2}\d{1,2}[A-Z]?\s+\d[A-Z]{2}\b/.test(addressString)) {
+      return 'UK_FORMAT'; // UK postal code pattern
+    }
+    
+    return 'GENERIC_FORMAT';
+  }
+
+  private parseAddressString(addressString: string, expectedCountry: string): GeneratedAddress {
+    // Keep existing method for backward compatibility
+    return this.parseAddressStringEnhanced(addressString, expectedCountry);
   }
 
   private isValidAddress(addr: any): boolean {

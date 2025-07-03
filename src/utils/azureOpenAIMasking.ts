@@ -3,8 +3,6 @@ import { AzureOpenAIService, GeneratedAddress, type AzureOpenAIConfig, type Batc
 import { EnhancedAddressGenerator, type EnhancedMaskingOptions } from './enhancedAddressGeneration';
 import { GeoColumnDetector, type GeoColumnMapping } from './geoColumnDetection';
 import { DataPreservationEngine, type PreservationRule } from './dataPreservation';
-import { ReferenceBatchCreator, type BatchCreationStrategy } from './referenceBatchCreator';
-import { IntelligentBatchStrategy, type BatchingDecision } from './intelligentBatchStrategy';
 import { DataType } from '@/types';
 
 interface AzureOpenAIMaskingOptions {
@@ -22,8 +20,6 @@ class AzureOpenAIMasking {
   private enhancedGenerator: EnhancedAddressGenerator;
   private geoDetector: GeoColumnDetector;
   private preservationEngine: DataPreservationEngine;
-  private batchCreator: ReferenceBatchCreator;
-  private batchStrategy: IntelligentBatchStrategy;
   private countryAddressMap: Map<string, GeneratedAddress[]> = new Map();
   private countryIndexMap: Map<string, number> = new Map();
   private preservationRules: PreservationRule[] = [];
@@ -31,8 +27,7 @@ class AzureOpenAIMasking {
   private options: AzureOpenAIMaskingOptions;
 
   constructor(options: AzureOpenAIMaskingOptions) {
-    console.log('=== Initializing Enhanced AzureOpenAIMasking ===');
-    console.log('Options:', JSON.stringify(options, null, 2));
+    console.log('=== Initializing Simplified AzureOpenAIMasking ===');
     
     this.options = {
       batchSize: 50,
@@ -47,15 +42,13 @@ class AzureOpenAIMasking {
     this.enhancedGenerator = new EnhancedAddressGenerator({
       azureService: this.service,
       batchSize: this.options.batchSize!,
-      cacheExpiration: 30 * 60 * 1000, // 30 minutes
+      cacheExpiration: 30 * 60 * 1000,
       maxRetries: this.options.maxRetries!,
       qualityThreshold: 0.8
     });
 
     this.geoDetector = new GeoColumnDetector();
     this.preservationEngine = new DataPreservationEngine();
-    this.batchCreator = new ReferenceBatchCreator();
-    this.batchStrategy = new IntelligentBatchStrategy();
   }
 
   async initializeForDataset(
@@ -63,9 +56,9 @@ class AzureOpenAIMasking {
     columns: any[],
     countryColumnName?: string
   ): Promise<void> {
-    console.log('=== Enhanced Dataset Initialization ===');
+    console.log('=== Simplified Dataset Initialization ===');
     
-    // Detect geo columns and extract just the mapping
+    // Detect geo columns
     const geoAnalysis = this.geoDetector.detectGeoColumns(columns);
     this.geoMapping = geoAnalysis.mapping;
     console.log('Detected geo mapping:', this.geoMapping);
@@ -77,123 +70,61 @@ class AzureOpenAIMasking {
       console.log('Created preservation rules:', this.preservationRules.length);
     }
 
-    // Use intelligent batching strategy with OPTIMIZED API CALLS
-    if (this.options.useIntelligentBatching) {
-      const batchingDecision = this.batchStrategy.analyzeBatchingNeeds(
-        data,
-        this.geoMapping,
-        this.options.selectedCountries
-      );
-      console.log('Batching decision:', batchingDecision);
+    // Use enhanced address generation with SINGLE batch call
+    await this.preGenerateAddresses(data, countryColumnName);
 
-      // Create optimized strategies
-      const strategies = this.batchStrategy.createOptimizedStrategies(
-        batchingDecision,
-        data,
-        this.geoMapping
-      );
-
-      // OPTIMIZATION: Use single batch API call for all countries
-      await this.preGenerateBatchOptimized(strategies.filter(s => s.priority === 'high'));
-    } else {
-      // Fallback to original initialization
-      await this.initializeOriginalMethod(data, countryColumnName);
-    }
-
-    console.log('Enhanced initialization complete');
+    console.log('Simplified initialization complete');
   }
 
-  private async preGenerateBatchOptimized(strategies: BatchCreationStrategy[]): Promise<void> {
-    if (strategies.length === 0) return;
-
-    try {
-      console.log('=== OPTIMIZED: Single Batch API Call for All Countries ===');
-      
-      // Create batch request for all countries at once
-      const batchRequest: BatchAddressGenerationRequest = {
-        countries: strategies.map(strategy => ({
-          country: strategy.country,
-          count: strategy.requiredCount
-        }))
-      };
-
-      console.log('Batch request:', batchRequest);
-
-      // Single API call for all countries
-      const batchResponse = await this.service.generateBatchAddresses(batchRequest);
-      
-      console.log(`✅ OPTIMIZED: Generated addresses for ${batchResponse.addressesByCountry.size} countries in ONE API call`);
-      console.log('Batch response metadata:', batchResponse.metadata);
-
-      // Store addresses in country maps
-      for (const [country, addresses] of batchResponse.addressesByCountry.entries()) {
-        this.countryAddressMap.set(country, addresses);
-        this.countryIndexMap.set(country, 0);
-        console.log(`Stored ${addresses.length} addresses for ${country}`);
-      }
-
-    } catch (error) {
-      console.error('❌ OPTIMIZED batch generation failed, falling back to individual calls:', error);
-      
-      // Fallback to individual calls if batch fails
-      for (const strategy of strategies) {
-        await this.preGenerateBatch(strategy);
-      }
-    }
-  }
-
-  private async preGenerateBatch(strategy: BatchCreationStrategy): Promise<void> {
-    try {
-      console.log(`Pre-generating batch for ${strategy.country}...`);
-      
-      const addresses = await this.enhancedGenerator.getAddressesForCountry(
-        strategy.country,
-        strategy.requiredCount
-      );
-
-      const batch = this.batchCreator.createReferenceBatch(strategy, addresses);
-      console.log(`Created batch for ${strategy.country}: ${batch.addresses.length} addresses, quality: ${batch.quality}`);
-
-      // Store in country address map for compatibility
-      this.countryAddressMap.set(strategy.country, batch.addresses);
-      this.countryIndexMap.set(strategy.country, 0);
-      
-    } catch (error) {
-      console.error(`Failed to pre-generate batch for ${strategy.country}:`, error);
-    }
-  }
-
-  private async initializeOriginalMethod(
+  private async preGenerateAddresses(
     data: Record<string, string>[],
     countryColumnName?: string
   ): Promise<void> {
-    if (!countryColumnName) {
-      // If no country column, use selected countries or default
-      const countries = this.options.selectedCountries || ['United States'];
-      const addressesPerCountry = Math.ceil(data.length / countries.length);
+    try {
+      console.log('=== Pre-generating addresses with SINGLE batch call ===');
       
-      for (const country of countries) {
-        const addresses = await this.enhancedGenerator.getAddressesForCountry(
-          country, 
-          addressesPerCountry
+      if (!countryColumnName) {
+        // If no country column, use selected countries
+        const countries = this.options.selectedCountries || ['United States'];
+        const addressesPerCountry = Math.ceil(data.length / countries.length);
+        
+        const batchRequest: BatchAddressGenerationRequest = {
+          countries: countries.map(country => ({
+            country,
+            count: addressesPerCountry
+          }))
+        };
+
+        const batchResponse = await this.service.generateBatchAddresses(batchRequest);
+        this.countryAddressMap = batchResponse.addressesByCountry;
+        
+        // Initialize index counters
+        for (const country of countries) {
+          this.countryIndexMap.set(country, 0);
+        }
+      } else {
+        // Use enhanced generator for optimized addresses
+        const optimizedAddresses = await this.enhancedGenerator.generateOptimizedAddresses(
+          data,
+          countryColumnName,
+          this.options.selectedCountries
         );
-        this.countryAddressMap.set(country, addresses);
-        this.countryIndexMap.set(country, 0);
+        
+        this.countryAddressMap = optimizedAddresses;
+        
+        // Initialize index counters
+        for (const country of optimizedAddresses.keys()) {
+          this.countryIndexMap.set(country, 0);
+        }
       }
-    } else {
-      // Generate optimized addresses based on country distribution
-      const optimizedAddresses = await this.enhancedGenerator.generateOptimizedAddresses(
-        data,
-        countryColumnName,
-        this.options.selectedCountries
-      );
       
-      this.countryAddressMap = optimizedAddresses;
-      
-      // Initialize index counters
-      for (const country of optimizedAddresses.keys()) {
-        this.countryIndexMap.set(country, 0);
+      console.log(`✅ Pre-generated addresses for ${this.countryAddressMap.size} countries`);
+      for (const [country, addresses] of this.countryAddressMap.entries()) {
+        console.log(`- ${country}: ${addresses.length} addresses`);
       }
+      
+    } catch (error) {
+      console.error('❌ Pre-generation failed:', error);
     }
   }
 
@@ -211,8 +142,7 @@ class AzureOpenAIMasking {
 
     const addresses = this.countryAddressMap.get(country)!;
     if (addresses.length === 0) {
-      // Fallback to original value if no addresses available
-      return value;
+      return value; // Fallback to original value
     }
 
     // Get current index and increment (with wrapping)
@@ -259,7 +189,6 @@ class AzureOpenAIMasking {
 
   clearCache(): void {
     this.enhancedGenerator.clearCache();
-    this.batchCreator.clearBatches();
     this.countryAddressMap.clear();
     this.countryIndexMap.clear();
     this.preservationRules = [];
@@ -269,7 +198,6 @@ class AzureOpenAIMasking {
   getCacheStats() {
     return {
       enhancedGenerator: this.enhancedGenerator.getCacheStats(),
-      batchCreator: this.batchCreator.getBatchStats(),
       loadedCountries: this.getLoadedCountries(),
       preservationRules: this.preservationRules.length
     };

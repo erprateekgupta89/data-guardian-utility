@@ -1,5 +1,5 @@
 
-import { AzureOpenAIService, type GeneratedAddress } from '@/services/azureOpenAI';
+import { AzureOpenAIService, type GeneratedAddress, type BatchAddressGenerationRequest } from '@/services/azureOpenAI';
 import { GeoReferenceSystem } from './geoReference';
 import { CountryProportionCalculator, type ProportionalMaskingPlan } from './countryProportions';
 
@@ -35,7 +35,7 @@ class EnhancedAddressGenerator {
     this.options = {
       batchSize: 50,
       cacheExpiration: 30 * 60 * 1000, // 30 minutes
-      maxRetries: 5, // Increased from 3 to 5
+      maxRetries: 3,
       qualityThreshold: 0.8,
       ...options
     };
@@ -48,9 +48,9 @@ class EnhancedAddressGenerator {
     countryColumnName: string,
     selectedCountries?: string[]
   ): Promise<Map<string, GeneratedAddress[]>> {
-    console.log('=== Starting Optimized Address Generation ===');
+    console.log('=== Starting Optimized Batch Address Generation ===');
     
-    // Calculate exact country requirements by iterating through entire dataset
+    // Calculate exact country requirements
     const countryRequirements = this.calculateExactCountryRequirements(
       data,
       countryColumnName,
@@ -59,8 +59,8 @@ class EnhancedAddressGenerator {
 
     console.log('Country requirements:', countryRequirements);
 
-    // Make single optimized API call for all countries
-    const countryAddressMap = await this.generateSingleOptimizedCall(countryRequirements);
+    // Use SINGLE batch API call for ALL countries
+    const countryAddressMap = await this.generateSingleBatchCall(countryRequirements);
 
     return countryAddressMap;
   }
@@ -89,7 +89,6 @@ class EnhancedAddressGenerator {
       }
     });
 
-    // Convert to CountryRequirement format
     return Array.from(countryMap.entries()).map(([country, rowIndices]) => ({
       country,
       count: rowIndices.length,
@@ -97,66 +96,39 @@ class EnhancedAddressGenerator {
     }));
   }
 
-  private async generateSingleOptimizedCall(
+  private async generateSingleBatchCall(
     countryRequirements: CountryRequirement[]
   ): Promise<Map<string, GeneratedAddress[]>> {
-    const countryAddressMap = new Map<string, GeneratedAddress[]>();
-
-    // Enhanced retry logic with duplicate detection
-    for (const requirement of countryRequirements) {
-      let attempt = 1;
-      let allAddresses: GeneratedAddress[] = [];
-      const seenAddresses = new Set<string>();
-
-      while (allAddresses.length < requirement.count && attempt <= this.options.maxRetries) {
-        try {
-          console.log(`Generating ${requirement.count} addresses for ${requirement.country} (attempt ${attempt})`);
-          
-          const batchSize = Math.min(requirement.count, this.options.batchSize);
-          const addresses = await this.options.azureService.generateAddresses({
-            country: requirement.country,
-            count: batchSize,
-            addressType: 'mixed'
-          });
-
-          // Duplicate detection and validation
-          const uniqueAddresses = addresses.filter(addr => {
-            const addressKey = `${addr.street}-${addr.city}-${addr.state}-${addr.postalCode}`;
-            if (seenAddresses.has(addressKey)) {
-              return false;
-            }
-            seenAddresses.add(addressKey);
-            return this.geoReference.validateAddressFormat(addr, requirement.country);
-          });
-
-          allAddresses.push(...uniqueAddresses);
-          
-          const successRate = uniqueAddresses.length / batchSize;
-          console.log(`Generated ${uniqueAddresses.length}/${batchSize} unique valid addresses (${(successRate * 100).toFixed(1)}% success rate)`);
-
-          if (uniqueAddresses.length > 0 || attempt === this.options.maxRetries) {
-            break;
-          }
-
-        } catch (error) {
-          console.error(`Attempt ${attempt} failed for ${requirement.country}:`, error);
-          if (attempt === this.options.maxRetries) {
-            console.error(`Failed to generate addresses for ${requirement.country} after ${this.options.maxRetries} attempts`);
-          }
-        }
-
-        attempt++;
-        // Progressive delay between retries
-        await this.delay(1000 * attempt);
-      }
-
-      // Store addresses even if we didn't get the exact count
-      if (allAddresses.length > 0) {
-        countryAddressMap.set(requirement.country, allAddresses);
-      }
+    if (countryRequirements.length === 0) {
+      return new Map();
     }
 
-    return countryAddressMap;
+    try {
+      console.log('=== SINGLE BATCH API CALL FOR ALL COUNTRIES ===');
+      
+      // Create ONE batch request for ALL countries
+      const batchRequest: BatchAddressGenerationRequest = {
+        countries: countryRequirements.map(req => ({
+          country: req.country,
+          count: req.count
+        }))
+      };
+
+      console.log('Batch request:', batchRequest);
+
+      // ONE API call for everything
+      const batchResponse = await this.options.azureService.generateBatchAddresses(batchRequest);
+      
+      console.log(`✅ Generated addresses for ${batchResponse.addressesByCountry.size} countries in ONE API call`);
+      console.log('Batch response metadata:', batchResponse.metadata);
+
+      return batchResponse.addressesByCountry;
+
+    } catch (error) {
+      console.error('❌ Batch generation failed:', error);
+      // Return empty map instead of falling back to individual calls
+      return new Map();
+    }
   }
 
   async getAddressesForCountry(country: string, count: number): Promise<GeneratedAddress[]> {
@@ -166,8 +138,15 @@ class EnhancedAddressGenerator {
       return cached;
     }
 
-    // Generate new addresses with smart retry
-    const addresses = await this.generateWithSmartRetry(country, count);
+    // Use batch generation for individual country requests too
+    const countryRequirements: CountryRequirement[] = [{
+      country,
+      count,
+      rowIndices: Array.from({ length: count }, (_, i) => i)
+    }];
+
+    const batchResult = await this.generateSingleBatchCall(countryRequirements);
+    const addresses = batchResult.get(country) || [];
     
     // Cache the results
     this.cacheAddresses(country, addresses);
@@ -194,82 +173,12 @@ class EnhancedAddressGenerator {
     return null;
   }
 
-  private async generateWithSmartRetry(country: string, count: number): Promise<GeneratedAddress[]> {
-    const allAddresses: GeneratedAddress[] = [];
-    let remainingCount = count;
-    let attempt = 1;
-
-    while (remainingCount > 0 && attempt <= this.options.maxRetries) {
-      try {
-        console.log(`Generating ${remainingCount} addresses for ${country} (attempt ${attempt})`);
-        
-        // Get regional requirements
-        const requirements = this.geoReference.generateRegionalRequirements(country);
-        const specificRequirements = this.geoReference.getSpecificRequirements(
-          country, 
-          requirements.preferredRegions
-        );
-
-        // Generate batch
-        const batchSize = Math.min(remainingCount, this.options.batchSize);
-        const addresses = await this.options.azureService.generateAddresses({
-          country,
-          count: batchSize,
-          addressType: 'mixed',
-          regions: requirements.preferredRegions,
-          specificRequirements
-        });
-
-        // Validate addresses
-        const validAddresses = addresses.filter(addr => 
-          this.geoReference.validateAddressFormat(addr, country)
-        );
-
-        allAddresses.push(...validAddresses);
-        remainingCount -= validAddresses.length;
-
-        // Calculate success rate
-        const successRate = validAddresses.length / batchSize;
-        console.log(`Generated ${validAddresses.length}/${batchSize} valid addresses (${(successRate * 100).toFixed(1)}% success rate)`);
-
-        // If success rate is too low, try different approach
-        if (successRate < this.options.qualityThreshold && attempt < this.options.maxRetries) {
-          console.log(`Low success rate, retrying with different parameters...`);
-          attempt++;
-          continue;
-        }
-
-        // Break if we got some addresses or if this is the last attempt
-        if (validAddresses.length > 0 || attempt === this.options.maxRetries) {
-          break;
-        }
-
-      } catch (error) {
-        console.error(`Attempt ${attempt} failed for ${country}:`, error);
-        if (attempt === this.options.maxRetries) {
-          throw error;
-        }
-      }
-
-      attempt++;
-      // Progressive delay between retries
-      await this.delay(1000 * attempt);
-    }
-
-    console.log(`Generated ${allAddresses.length} total addresses for ${country}`);
-    return allAddresses;
-  }
-
   private cacheAddresses(country: string, addresses: GeneratedAddress[]): void {
     this.addressCache[country] = {
       addresses,
       lastGenerated: new Date(),
       quality: addresses.length > 0 ? 'high' : 'low'
     };
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   clearCache(): void {

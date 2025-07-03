@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-import { Check, Info, Database, Zap } from 'lucide-react';
+import { Check, Info } from 'lucide-react';
 import { ColumnInfo, FileData, MaskingConfig, AzureOpenAISettings } from '@/types';
 import { maskDataSet } from '@/utils/masking';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -97,16 +97,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
       }, 500);
       
       try {
-        console.log('Starting AI-enhanced masking process...');
-        console.log('AI Masking Config:', {
-          enabled: azureOpenAI.enabled,
-          endpoint: azureOpenAI.endpoint,
-          deploymentName: azureOpenAI.deploymentName,
-          apiVersion: azureOpenAI.apiVersion,
-          hasApiKey: !!azureOpenAI.apiKey,
-          hasLocationColumns,
-          geoMapping: geoAnalysis.mapping
-        });
+        console.log('Starting enhanced masking process...');
 
         const maskedData = await maskDataSet(
           fileData.data,
@@ -134,16 +125,14 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
         setProgress(100);
         
         toast({
-          title: "AI Masking Complete",
-          description: hasLocationColumns 
-            ? "Data successfully masked using AI with intelligent geo-masking, pattern preservation, and optimized API calls."
-            : "Data successfully masked using AI-enhanced methods with pattern preservation.",
+          title: "Enhanced Masking Complete",
+          description: "Data successfully masked using AI with intelligent geo-masking and pattern preservation.",
         });
         
         onDataMasked(maskedData, maskingConfig);
       } catch (error) {
         clearInterval(progressInterval);
-        console.error('Error during AI masking:', error);
+        console.error('Error during masking:', error);
         toast({
           title: "Masking Error",
           description: `An error occurred while masking the data: ${error.message || 'Unknown error'}. Please check the console for details.`,
@@ -181,12 +170,10 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
             <div className="text-white text-lg font-semibold mb-2">
-              AI Masking in progress...
+              Enhanced masking in progress...
             </div>
             <div className="text-white text-sm">
-              {hasLocationColumns 
-                ? 'Applying intelligent geo-masking with optimized processing...' 
-                : 'Please wait while your data is being masked with AI...'}
+              Applying intelligent pattern preservation and geo-masking...
             </div>
             <div className="mt-4 w-48">
               <Progress value={progress} />
@@ -199,38 +186,22 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
       <Card className="w-full">
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-lg font-medium">
-            <div className="flex items-center">
-              Masking Options
-              {hasLocationColumns && (
-                <div className="flex items-center ml-2 space-x-1">
-                  <Badge variant="outline" className="text-xs">
-                    <Database className="h-3 w-3 mr-1" />
-                    Geo-Smart
-                  </Badge>
-                  <Badge variant="outline" className="text-xs">
-                    <Zap className="h-3 w-3 mr-1" />
-                    Pattern-Aware
-                  </Badge>
-                </div>
-              )}
-            </div>
+            Enhanced Masking Options
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-4">
-            {/* Enhanced Features Info */}
-            {hasLocationColumns && (
-              <div className="text-xs text-blue-600 bg-blue-100 p-3 rounded border-l-4 border-blue-400">
-                <strong>AI Features Active:</strong>
-                <ul className="mt-1 space-y-1 list-disc list-inside">
-                  <li>Intelligent geo-column mapping: {Object.keys(geoAnalysis.mapping).join(', ')}</li>
-                  <li>Optimized single API calls (reduced from multiple calls)</li>
-                  <li>Pattern preservation for prefixed data (e.g., Campaign_1, Campaign_2)</li>
-                  <li>Enhanced duplicate detection and retry logic</li>
-                  <li>Data structure and format preservation</li>
-                </ul>
-              </div>
-            )}
+            {/* Features Info */}
+            <div className="text-xs text-blue-600 bg-blue-100 p-3 rounded border-l-4 border-blue-400">
+              <strong>Enhanced Features:</strong>
+              <ul className="mt-1 space-y-1 list-disc list-inside">
+                <li>Single optimized API call (reduced from multiple calls)</li>
+                <li>Pattern preservation for all column types (e.g., Campaign_1, Campaign_2)</li>
+                <li>Enhanced duplicate detection and retry logic</li>
+                <li>Intelligent geo-column mapping for location data</li>
+                <li>Data structure and format preservation</li>
+              </ul>
+            </div>
 
             {/* Country Preference Option */}
             <div className="flex items-center justify-between">
@@ -325,10 +296,10 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
               ) : (
                 <span className="flex items-center">
                   <Check className="mr-2 h-4 w-4" /> 
-                  Apply AI Masking
+                  Apply Enhanced Masking
                 </span>
               )}
-            </Button>
+            </button>
           </div>
         </CardContent>
       </Card>
