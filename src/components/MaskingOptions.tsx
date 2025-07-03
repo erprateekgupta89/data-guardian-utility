@@ -1,22 +1,14 @@
 
 import { useState } from 'react';
-import { Check, Info, Settings, Eye, EyeOff, Cpu, Database, Zap } from 'lucide-react';
+import { Check, Info, Database, Zap } from 'lucide-react';
 import { ColumnInfo, FileData, MaskingConfig, AzureOpenAISettings } from '@/types';
 import { maskDataSet } from '@/utils/masking';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { 
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue 
-} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -25,18 +17,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { ChevronsUpDown } from "lucide-react";
 import { Progress } from '@/components/ui/progress';
-import { AzureOpenAIMasking } from '@/utils/azureOpenAIMasking';
 import { GeoColumnDetector } from '@/utils/geoColumnDetection';
 import React from 'react';
 
@@ -76,80 +59,19 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
   const [selectedCountry, setSelectedCountry] = useState<string>("India");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   
-  // Azure OpenAI settings - now always enabled with your provided configuration
-  const [azureOpenAI, setAzureOpenAI] = useState<AzureOpenAISettings>({
-    enabled: true, // Always enabled now
+  // Azure OpenAI settings - configured with your provided settings
+  const azureOpenAI: AzureOpenAISettings = {
+    enabled: true,
     endpoint: 'https://qatai.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2025-01-01-preview',
     apiKey: 'AEw7fZ3WwPe6u6Msudlam9bpTz7sSM8JiUhVHIDtpvSHpXn4GDcIJQQJ99BBACYeBjFXJ3w3AAABACOGZap5',
     apiVersion: '2025-01-01-preview',
     deploymentName: 'gpt-4o'
-  });
-  
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [azureDialogOpen, setAzureDialogOpen] = useState(false);
-  const [testingConnection, setTestingConnection] = useState(false);
+  };
 
   // Enhanced location column detection using the geo detector
   const geoDetector = new GeoColumnDetector();
   const geoAnalysis = geoDetector.detectGeoColumns(columns);
   const hasLocationColumns = geoAnalysis.hasGeoData;
-
-  const handleTestAzureConnection = async () => {
-    if (!azureOpenAI.endpoint || !azureOpenAI.apiKey || !azureOpenAI.deploymentName) {
-      toast({
-        title: "Missing Configuration",
-        description: "Please fill in all Azure OpenAI settings before testing.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setTestingConnection(true);
-    try {
-      console.log('=== Testing Azure OpenAI Connection ===');
-      console.log('Configuration:', {
-        endpoint: azureOpenAI.endpoint,
-        apiVersion: azureOpenAI.apiVersion,
-        deploymentName: azureOpenAI.deploymentName,
-        hasApiKey: !!azureOpenAI.apiKey
-      });
-
-      const azureMasking = new AzureOpenAIMasking({
-        config: {
-          endpoint: azureOpenAI.endpoint,
-          apiKey: azureOpenAI.apiKey,
-          apiVersion: azureOpenAI.apiVersion,
-          deploymentName: azureOpenAI.deploymentName
-        },
-        preserveDataStructure: true,
-        useIntelligentBatching: true
-      });
-
-      const isConnected = await azureMasking.testConnection();
-      
-      if (isConnected) {
-        toast({
-          title: "Connection Successful",
-          description: "AI masking service is ready with intelligent geo-masking capabilities.",
-        });
-      } else {
-        toast({
-          title: "Connection Failed",
-          description: "Unable to connect to AI service. Please check your settings and try again.",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error('Connection test error:', error);
-      toast({
-        title: "Connection Error",
-        description: `An error occurred while testing the connection: ${error.message || 'Unknown error'}`,
-        variant: "destructive",
-      });
-    } finally {
-      setTestingConnection(false);
-    }
-  };
 
   const handleApplyMasking = async () => {
     setIsProcessing(true);
@@ -192,7 +114,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
           {
             useCountryDropdown,
             selectedCountries: [selectedCountry],
-            useAzureOpenAI: true, // Always use Azure OpenAI now
+            useAzureOpenAI: true,
             azureOpenAIConfig: {
               config: {
                 endpoint: azureOpenAI.endpoint,
@@ -214,8 +136,8 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
         toast({
           title: "AI Masking Complete",
           description: hasLocationColumns 
-            ? "Data successfully masked using AI with intelligent geo-masking, data preservation, and smart batching."
-            : "Data successfully masked using AI-enhanced methods.",
+            ? "Data successfully masked using AI with intelligent geo-masking, pattern preservation, and optimized API calls."
+            : "Data successfully masked using AI-enhanced methods with pattern preservation.",
         });
         
         onDataMasked(maskedData, maskingConfig);
@@ -263,7 +185,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
             </div>
             <div className="text-white text-sm">
               {hasLocationColumns 
-                ? 'Applying intelligent geo-masking with data preservation...' 
+                ? 'Applying intelligent geo-masking with optimized processing...' 
                 : 'Please wait while your data is being masked with AI...'}
             </div>
             <div className="mt-4 w-48">
@@ -281,17 +203,13 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
               AI Masking Options
               {hasLocationColumns && (
                 <div className="flex items-center ml-2 space-x-1">
-                  <Badge variant="secondary" className="text-xs">
-                    <Cpu className="h-3 w-3 mr-1" />
-                    AI Enhanced
-                  </Badge>
                   <Badge variant="outline" className="text-xs">
                     <Database className="h-3 w-3 mr-1" />
                     Geo-Smart
                   </Badge>
                   <Badge variant="outline" className="text-xs">
                     <Zap className="h-3 w-3 mr-1" />
-                    Auto-Optimized
+                    Pattern-Aware
                   </Badge>
                 </div>
               )}
@@ -300,156 +218,19 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-4">
-            {/* AI Configuration Section - Always shown now */}
-            <div className="space-y-3 border rounded-lg p-4 bg-gradient-to-r from-blue-50 to-purple-50">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <Label className="font-medium">
-                    AI Masking Service
-                  </Label>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div>
-                          <Info className="h-4 w-4 text-blue-500" />
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-sm">
-                        <p>
-                          Advanced AI integration featuring:
-                          {hasLocationColumns && (
-                            <>
-                              <br />• Intelligent geo-column detection (found: {Object.keys(geoAnalysis.mapping).join(', ')})
-                              <br />• Data structure preservation 
-                              <br />• Smart batching strategies
-                              <br />• Regional consistency validation
-                            </>
-                          )}
-                          <br />• Enhanced geographic accuracy
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-                <Badge variant="default" className="text-xs">
-                  Always Active
-                </Badge>
+            {/* Enhanced Features Info */}
+            {hasLocationColumns && (
+              <div className="text-xs text-blue-600 bg-blue-100 p-3 rounded border-l-4 border-blue-400">
+                <strong>AI Features Active:</strong>
+                <ul className="mt-1 space-y-1 list-disc list-inside">
+                  <li>Intelligent geo-column mapping: {Object.keys(geoAnalysis.mapping).join(', ')}</li>
+                  <li>Optimized single API calls (reduced from multiple calls)</li>
+                  <li>Pattern preservation for prefixed data (e.g., Campaign_1, Campaign_2)</li>
+                  <li>Enhanced duplicate detection and retry logic</li>
+                  <li>Data structure and format preservation</li>
+                </ul>
               </div>
-              
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <Dialog open={azureDialogOpen} onOpenChange={setAzureDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button variant="outline" size="sm">
-                        <Settings className="h-4 w-4 mr-2" />
-                        Configure AI Service
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-[500px]">
-                      <DialogHeader>
-                        <DialogTitle>AI Masking Service Configuration</DialogTitle>
-                        <DialogDescription>
-                          Configure your AI service settings for intelligent data masking with geo-location awareness
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="space-y-4 py-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="endpoint">Service Endpoint</Label>
-                          <Input
-                            id="endpoint"
-                            placeholder="https://your-service.openai.azure.com"
-                            value={azureOpenAI.endpoint}
-                            onChange={(e) => setAzureOpenAI(prev => ({ ...prev, endpoint: e.target.value }))}
-                          />
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <Label htmlFor="apiKey">API Key</Label>
-                          <div className="relative">
-                            <Input
-                              id="apiKey"
-                              type={showApiKey ? "text" : "password"}
-                              placeholder="Enter your API key"
-                              value={azureOpenAI.apiKey}
-                              onChange={(e) => setAzureOpenAI(prev => ({ ...prev, apiKey: e.target.value }))}
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                              onClick={() => setShowApiKey(!showApiKey)}
-                            >
-                              {showApiKey ? (
-                                <EyeOff className="h-4 w-4" />
-                              ) : (
-                                <Eye className="h-4 w-4" />
-                              )}
-                            </Button>
-                          </div>
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <Label htmlFor="apiVersion">API Version</Label>
-                          <Input
-                            id="apiVersion"
-                            placeholder="2024-02-01"
-                            value={azureOpenAI.apiVersion}
-                            onChange={(e) => setAzureOpenAI(prev => ({ ...prev, apiVersion: e.target.value }))}
-                          />
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <Label htmlFor="deploymentName">Model Deployment</Label>
-                          <Input
-                            id="deploymentName"
-                            placeholder="gpt-4"
-                            value={azureOpenAI.deploymentName}
-                            onChange={(e) => setAzureOpenAI(prev => ({ ...prev, deploymentName: e.target.value }))}
-                          />
-                        </div>
-                        
-                        <div className="flex space-x-2">
-                          <Button 
-                            variant="outline" 
-                            onClick={handleTestAzureConnection}
-                            disabled={testingConnection}
-                            className="flex-1"
-                          >
-                            {testingConnection ? 'Testing...' : 'Test Connection'}
-                          </Button>
-                          <Button onClick={() => setAzureDialogOpen(false)} className="flex-1">
-                            Save Settings
-                          </Button>
-                        </div>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                  
-                  {azureOpenAI.endpoint && azureOpenAI.apiKey && (
-                    <Badge variant="secondary" className="text-xs">
-                      Configured
-                    </Badge>
-                  )}
-                </div>
-                
-                <div className="text-xs text-blue-600 bg-blue-100 p-3 rounded border-l-4 border-blue-400">
-                  <strong>AI Features Active:</strong>
-                  <ul className="mt-1 space-y-1 list-disc list-inside">
-                    <li>Enhanced postal code detection (ZIP, Pincode, etc.)</li>
-                    {hasLocationColumns && (
-                      <>
-                        <li>Intelligent geo-column mapping: {Object.keys(geoAnalysis.mapping).join(', ')}</li>
-                        <li>Data structure and format preservation</li>
-                        <li>Smart batching with performance optimization</li>
-                        <li>Regional consistency and validation</li>
-                      </>
-                    )}
-                    <li>Advanced caching and reuse strategies</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
+            )}
 
             {/* Country Preference Option */}
             <div className="flex items-center justify-between">

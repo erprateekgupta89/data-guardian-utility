@@ -4,14 +4,21 @@ import { randomString, randomNumber, getUniqueValues, getRandomSample } from "./
 import { maskPersonalInfo, maskLocationData, maskDateTime } from "./dataTypeMasking";
 import { detectColumnDataType } from "./dataDetection";
 import { AzureOpenAIMasking, type AzureOpenAIMaskingOptions } from "./azureOpenAIMasking";
+import { PatternAnalyzer, type PatternAnalysis } from "./patternAnalysis";
 
 // Mask data based on its type and original format
-export const maskData = (value: string, dataType: DataType, format?: string, constantValues?: string[]): string => {
+export const maskData = (value: string, dataType: DataType, format?: string, constantValues?: string[], patternAnalysis?: PatternAnalysis, index?: number): string => {
   if (!value || value.trim() === '') return value;
   
   // If constant values are provided, use them instead of generating new values
   if (constantValues?.length) {
     return constantValues[Math.floor(Math.random() * constantValues.length)];
+  }
+
+  // Use pattern analysis for String data type if available
+  if (dataType === 'String' && patternAnalysis && patternAnalysis.hasPrefix && typeof index === 'number') {
+    const patternAnalyzer = new PatternAnalyzer();
+    return patternAnalyzer.generatePatternBasedValue(patternAnalysis, index);
   }
 
   switch(dataType) {
@@ -173,12 +180,22 @@ export const maskDataSet = async (
   
   // Get unique values for each column
   const columnUniqueValues: Record<string, string[]> = {};
+  const columnPatterns: Record<string, PatternAnalysis> = {};
+  const patternAnalyzer = new PatternAnalyzer();
+  
   columns.forEach(column => {
     // Only get unique values if the column has less than 20 unique values
     // This helps identify columns with constant/fixed values
     const uniqueValues = getUniqueValues(workingData, column.name);
     if (uniqueValues.length < 20) {
       columnUniqueValues[column.name] = uniqueValues;
+    }
+
+    // Analyze patterns for String columns to detect prefixes
+    if (column.dataType === 'String') {
+      const allValues = workingData.map(row => row[column.name]).filter(Boolean);
+      columnPatterns[column.name] = patternAnalyzer.analyzeColumnPattern(allValues);
+      console.log(`Pattern analysis for ${column.name}:`, columnPatterns[column.name]);
     }
   });
 
@@ -253,21 +270,27 @@ export const maskDataSet = async (
           console.error(`Enhanced Azure OpenAI masking failed for ${column.name} at row ${index}:`, error);
           // Fallback to regular masking
           const constantValues = columnUniqueValues[column.name];
+          const patternAnalysis = columnPatterns[column.name];
           maskedRow[column.name] = maskData(
             row[column.name], 
             column.dataType,
             row[column.name],
-            constantValues
+            constantValues,
+            patternAnalysis,
+            index
           );
         }
       } else {
-        // Pass constant values if they exist for this column
+        // Pass constant values if they exist for this column, and pattern analysis for String columns
         const constantValues = columnUniqueValues[column.name];
+        const patternAnalysis = columnPatterns[column.name];
         maskedRow[column.name] = maskData(
           row[column.name], 
           column.dataType,
           row[column.name], // Pass original value as format
-          constantValues
+          constantValues,
+          patternAnalysis,
+          index
         );
       }
     }
