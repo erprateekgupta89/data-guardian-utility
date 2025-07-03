@@ -143,17 +143,17 @@ class AzureOpenAIMasking {
         this.countryIndexMap.set(country, 0);
       }
     } else {
-      // Generate proportional addresses based on original country distribution
-      const proportionalAddresses = await this.enhancedGenerator.generateProportionalAddresses(
+      // Generate optimized addresses based on country distribution
+      const optimizedAddresses = await this.enhancedGenerator.generateOptimizedAddresses(
         data,
         countryColumnName,
         this.options.selectedCountries
       );
       
-      this.countryAddressMap = proportionalAddresses;
+      this.countryAddressMap = optimizedAddresses;
       
       // Initialize index counters
-      for (const country of proportionalAddresses.keys()) {
+      for (const country of optimizedAddresses.keys()) {
         this.countryIndexMap.set(country, 0);
       }
     }
