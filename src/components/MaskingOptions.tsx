@@ -104,9 +104,24 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
 
     setTestingConnection(true);
     try {
+      console.log('=== Testing Azure OpenAI Connection ===');
+      console.log('Configuration:', {
+        endpoint: azureOpenAI.endpoint,
+        apiVersion: azureOpenAI.apiVersion,
+        deploymentName: azureOpenAI.deploymentName,
+        hasApiKey: !!azureOpenAI.apiKey
+      });
+
+      // Construct the full endpoint URL if needed
+      let fullEndpoint = azureOpenAI.endpoint;
+      if (!fullEndpoint.includes('/chat/completions')) {
+        const baseUrl = fullEndpoint.split('/openai/deployments/')[0];
+        fullEndpoint = `${baseUrl}/openai/deployments/${azureOpenAI.deploymentName}/chat/completions?api-version=${azureOpenAI.apiVersion}`;
+      }
+
       const azureMasking = new AzureOpenAIMasking({
         config: {
-          endpoint: azureOpenAI.endpoint,
+          endpoint: fullEndpoint,
           apiKey: azureOpenAI.apiKey,
           apiVersion: azureOpenAI.apiVersion,
           deploymentName: azureOpenAI.deploymentName
@@ -123,14 +138,15 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
       } else {
         toast({
           title: "Connection Failed",
-          description: "Unable to connect to Azure OpenAI. Please check your settings.",
+          description: "Unable to connect to Azure OpenAI. Please check your settings and try again.",
           variant: "destructive",
         });
       }
     } catch (error) {
+      console.error('Connection test error:', error);
       toast({
         title: "Connection Error",
-        description: "An error occurred while testing the connection.",
+        description: `An error occurred while testing the connection: ${error.message || 'Unknown error'}`,
         variant: "destructive",
       });
     } finally {
@@ -163,6 +179,21 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
       
       try {
         console.log('Starting enhanced masking process...');
+        console.log('Azure OpenAI Config:', {
+          enabled: azureOpenAI.enabled,
+          endpoint: azureOpenAI.endpoint,
+          deploymentName: azureOpenAI.deploymentName,
+          apiVersion: azureOpenAI.apiVersion,
+          hasApiKey: !!azureOpenAI.apiKey
+        });
+
+        // Construct the full endpoint URL if needed
+        let fullEndpoint = azureOpenAI.endpoint;
+        if (azureOpenAI.enabled && !fullEndpoint.includes('/chat/completions')) {
+          const baseUrl = fullEndpoint.split('/openai/deployments/')[0];
+          fullEndpoint = `${baseUrl}/openai/deployments/${azureOpenAI.deploymentName}/chat/completions?api-version=${azureOpenAI.apiVersion}`;
+        }
+
         const maskedData = await maskDataSet(
           fileData.data,
           columns,
@@ -172,7 +203,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
             useAzureOpenAI: azureOpenAI.enabled,
             azureOpenAIConfig: azureOpenAI.enabled ? {
               config: {
-                endpoint: azureOpenAI.endpoint,
+                endpoint: fullEndpoint,
                 apiKey: azureOpenAI.apiKey,
                 apiVersion: azureOpenAI.apiVersion,
                 deploymentName: azureOpenAI.deploymentName
@@ -199,7 +230,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
         console.error('Error during masking:', error);
         toast({
           title: "Masking Error",
-          description: "An error occurred while masking the data. Please try again.",
+          description: `An error occurred while masking the data: ${error.message || 'Unknown error'}. Please check the console for details.`,
           variant: "destructive",
         });
       } finally {
