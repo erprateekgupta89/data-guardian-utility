@@ -1,14 +1,22 @@
-
 import { useState } from 'react';
 import { Check, Info } from 'lucide-react';
 import { ColumnInfo, FileData, MaskingConfig } from '@/types';
 import { maskDataSet } from '@/utils/masking';
+import { maskDataWithAI } from '@/utils/aiMasking';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue 
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -18,9 +26,11 @@ import {
   DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { ChevronsUpDown } from "lucide-react";
+import { Check as CheckIcon, ChevronsUpDown } from "lucide-react";
+import Chance from 'chance';
 import { Progress } from '@/components/ui/progress';
 import React from 'react';
+const chance = new Chance();
 
 // List of countries for the multi-select dropdown
 const countries = [
@@ -45,8 +55,6 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
   const [createTableSQL, setCreateTableSQL] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [hybridMode, setHybridMode] = useState(true);
-  const [apiKey, setApiKey] = useState('');
   
   // Check if a country column exists in the data
   const hasCountryColumn = columns.some(
@@ -63,48 +71,44 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
   const handleApplyMasking = async () => {
     setIsProcessing(true);
     setProgress(0);
-    
     try {
       const maskingConfig: MaskingConfig = {
         preserveFormat,
         createTableSQL,
         tableName,
         useCountryDropdown,
-        selectedCountries: [selectedCountry],
-        hybridMode,
-        batchSize: 50,
-        qualityThreshold: 80
+        selectedCountries: [selectedCountry]
       };
       
-      // Process data masking with enhanced options
-      const maskedData = await maskDataSet(
-        fileData.data,
-        columns,
-        { 
-          useCountryDropdown, 
-          selectedCountries: [selectedCountry],
-          hybridMode,
-          apiKey: apiKey.trim() || undefined
-        },
-        (progressValue) => setProgress(progressValue)
-      );
-      
-      onDataMasked(maskedData, maskingConfig);
-      
-      toast({
-        title: "Masking Complete",
-        description: `Successfully masked ${maskedData.length} rows with enhanced algorithms.`,
-      });
-      
+      // Process data masking
+      setTimeout(async () => {
+        try {
+          const maskedData = await maskDataSet(
+            fileData.data,
+            columns,
+            { useCountryDropdown, selectedCountries: [selectedCountry] }
+          );
+          setProgress(100);
+          onDataMasked(maskedData, maskingConfig);
+        } catch (error) {
+          console.error('Error during masking:', error);
+          toast({
+            title: "Masking Error",
+            description: "An error occurred while masking the data.",
+            variant: "destructive",
+          });
+        } finally {
+          setIsProcessing(false);
+        }
+      }, 500);
     } catch (error) {
       console.error('Error during masking:', error);
+      setIsProcessing(false);
       toast({
-        title: "Masking Error",
-        description: "An error occurred while masking the data.",
+        title: "Error",
+        description: "Failed to start masking process.",
         variant: "destructive",
       });
-    } finally {
-      setIsProcessing(false);
     }
   };
 
@@ -125,10 +129,8 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
-            <div className="text-white text-lg font-semibold mb-2">
-              {hybridMode ? 'Enhanced AI Masking in progress...' : 'Masking in progress...'}
-            </div>
-            <div className="text-white text-sm">Please wait while your data is being processed.</div>
+            <div className="text-white text-lg font-semibold mb-2">Masking in progress...</div>
+            <div className="text-white text-sm">Please wait while your data is being masked.</div>
             <div className="mt-4 w-48">
               <Progress value={progress} />
               <div className="text-xs text-center mt-1 text-white">{progress}%</div>
@@ -136,63 +138,23 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
           </div>
         </div>
       )}
-      
       {/* Main UI */}
       <Card className="w-full">
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-lg font-medium">
             <div className="flex items-center">
-              Enhanced Masking Options
+              Masking Options
             </div>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-4">
-            {/* Hybrid Mode Option */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Label htmlFor="hybridMode" className="cursor-pointer">
-                  AI-Enhanced Masking
-                </Label>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div>
-                        <Info className="h-4 w-4 text-gray-400" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      <p>
-                        Uses AI for complex text fields like addresses and names, while using optimized algorithms for structured data like phone numbers and emails.
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              <Switch
-                id="hybridMode"
-                checked={hybridMode}
-                onCheckedChange={setHybridMode}
-              />
+          {isProcessing && (
+            <div className="mb-4">
+              <Progress value={progress} />
+              <div className="text-xs text-center mt-1">{progress}%</div>
             </div>
-
-            {/* API Key Input for AI Mode */}
-            {hybridMode && (
-              <div className="space-y-2">
-                <Label>OpenAI API Key (Optional)</Label>
-                <input
-                  type="password"
-                  placeholder="sk-..."
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-masking-accent"
-                />
-                <p className="text-xs text-gray-500">
-                  Leave empty to use rule-based masking for all columns
-                </p>
-              </div>
-            )}
-
+          )}
+          <div className="space-y-4">
             {/* Country Preference Option */}
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
@@ -285,7 +247,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
                 </span>
               ) : (
                 <span className="flex items-center">
-                  <Check className="mr-2 h-4 w-4" /> Apply Enhanced Masking
+                  <Check className="mr-2 h-4 w-4" /> Apply Masking
                 </span>
               )}
             </Button>
