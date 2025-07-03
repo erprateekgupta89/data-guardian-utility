@@ -80,23 +80,23 @@ class AzureOpenAIService {
 
   private async makeAPICall(request: AddressGenerationRequest): Promise<string> {
     const systemPrompt = `
-You are a synthetic test‑data generator for software‑development purposes.
-Generate only fictional, non‑sensitive test data.
-Return the data as a JSON array of strings with no additional text.
+You are a synthetic test data generator for software development purposes.
+Generate fictional, non-sensitive test data only.
+Return data as a JSON array of strings with no additional text.
     `.trim();
 
     const userPrompt = `
 Generate ${request.count} unique, realistic, and complete fictional postal addresses for software testing in ${request.country}.
-Each address must include street, city, region/state (if applicable), postal code, and country – all in the correct local format.
+Each address must include: street, city, region/state (if applicable), postal code, and country — all in the correct local format.
 Ensure that postal codes correspond correctly to their respective city and state.
 
-Return only a valid JSON array of exactly ${request.count} address strings, with no extra explanation, headers, or metadata – just the array.
+Return only a valid JSON array of exactly ${request.count} address strings, with no extra explanation, headers, or metadata — just the array.
 
 Example format:
 [
   "123 Main Street, New York, NY 10001, United States",
   "45 Baker Street, London SW1A 1AA, United Kingdom",
-  "Rua das Flores, 123, São Paulo, SP 01001‑000, Brazil"
+  "Rua das Flores, 123, São Paulo, SP 01001-000, Brazil"
 ]
     `.trim();
 

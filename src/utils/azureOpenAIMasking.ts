@@ -28,27 +28,10 @@ class AzureOpenAIMasking {
       ...options
     };
     
-    // Ensure the endpoint is properly formatted
-    let endpoint = options.config.endpoint;
+    // Use the endpoint directly as provided - no manipulation needed
+    console.log('Using endpoint directly:', options.config.endpoint);
     
-    // If endpoint doesn't contain the full chat completions path, construct it
-    if (!endpoint.includes('/chat/completions')) {
-      // Extract base URL if it contains deployment info
-      const baseUrl = endpoint.split('/openai/deployments/')[0];
-      const deploymentName = options.config.deploymentName;
-      const apiVersion = options.config.apiVersion;
-      
-      endpoint = `${baseUrl}/openai/deployments/${deploymentName}/chat/completions?api-version=${apiVersion}`;
-    }
-    
-    console.log('Final endpoint:', endpoint);
-    
-    const serviceConfig = {
-      ...options.config,
-      endpoint
-    };
-    
-    this.service = new AzureOpenAIService(serviceConfig);
+    this.service = new AzureOpenAIService(options.config);
     
     this.enhancedGenerator = new EnhancedAddressGenerator({
       azureService: this.service,

@@ -74,13 +74,13 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
   const [selectedCountry, setSelectedCountry] = useState<string>("India");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   
-  // Azure OpenAI settings
+  // Azure OpenAI settings with your provided configuration
   const [azureOpenAI, setAzureOpenAI] = useState<AzureOpenAISettings>({
     enabled: false,
-    endpoint: '',
-    apiKey: '',
-    apiVersion: '2024-02-01',
-    deploymentName: 'gpt-4'
+    endpoint: 'https://qatai.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2025-01-01-preview',
+    apiKey: 'AEw7fZ3WwPe6u6Msudlam9bpTz7sSM8JiUhVHIDtpvSHpXn4GDcIJQQJ99BBACYeBjFXJ3w3AAABACOGZap5',
+    apiVersion: '2025-01-01-preview',
+    deploymentName: 'gpt-4o'
   });
   
   const [showApiKey, setShowApiKey] = useState(false);
@@ -112,16 +112,9 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
         hasApiKey: !!azureOpenAI.apiKey
       });
 
-      // Construct the full endpoint URL if needed
-      let fullEndpoint = azureOpenAI.endpoint;
-      if (!fullEndpoint.includes('/chat/completions')) {
-        const baseUrl = fullEndpoint.split('/openai/deployments/')[0];
-        fullEndpoint = `${baseUrl}/openai/deployments/${azureOpenAI.deploymentName}/chat/completions?api-version=${azureOpenAI.apiVersion}`;
-      }
-
       const azureMasking = new AzureOpenAIMasking({
         config: {
-          endpoint: fullEndpoint,
+          endpoint: azureOpenAI.endpoint,  // Use the full endpoint directly
           apiKey: azureOpenAI.apiKey,
           apiVersion: azureOpenAI.apiVersion,
           deploymentName: azureOpenAI.deploymentName
@@ -187,13 +180,6 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
           hasApiKey: !!azureOpenAI.apiKey
         });
 
-        // Construct the full endpoint URL if needed
-        let fullEndpoint = azureOpenAI.endpoint;
-        if (azureOpenAI.enabled && !fullEndpoint.includes('/chat/completions')) {
-          const baseUrl = fullEndpoint.split('/openai/deployments/')[0];
-          fullEndpoint = `${baseUrl}/openai/deployments/${azureOpenAI.deploymentName}/chat/completions?api-version=${azureOpenAI.apiVersion}`;
-        }
-
         const maskedData = await maskDataSet(
           fileData.data,
           columns,
@@ -203,7 +189,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
             useAzureOpenAI: azureOpenAI.enabled,
             azureOpenAIConfig: azureOpenAI.enabled ? {
               config: {
-                endpoint: fullEndpoint,
+                endpoint: azureOpenAI.endpoint,  // Use the full endpoint directly
                 apiKey: azureOpenAI.apiKey,
                 apiVersion: azureOpenAI.apiVersion,
                 deploymentName: azureOpenAI.deploymentName
@@ -425,7 +411,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
                     
                     {azureOpenAI.enabled && (
                       <div className="text-xs text-blue-600 bg-blue-100 p-2 rounded">
-                        <strong>Enhanced Features:</strong> Geographic accuracy, regional diversity, country proportion preservation, intelligent caching, and format validation.
+                        <strong>Enhanced Features:</strong> Real Azure OpenAI API calls for geographically accurate addresses, regional diversity, country proportion preservation, intelligent caching, and format validation.
                       </div>
                     )}
                   </div>
