@@ -1,4 +1,3 @@
-
 import { GeneratedAddress } from '@/services/azureOpenAI';
 
 interface AddressValidationResult {
@@ -20,15 +19,38 @@ interface ValidationStats {
   retries: number;
 }
 
+// NEW: Smart retry interfaces
+interface SmartRetryResult {
+  validAddresses: GeneratedAddress[];
+  invalidAddresses: GeneratedAddress[];
+  retryRequests: Array<{ country: string; count: number; failedIndices: number[] }>;
+  qualityStats: Record<string, number>;
+  successRate: number;
+}
+
+interface RetryTracker {
+  countryRetryAttempts: Map<string, number>;
+  maxRetryAttempts: number;
+  failedAddressIndices: Map<string, number[]>;
+}
+
 class AddressValidator {
   private reuseTracker: AddressReuseTracker;
   private validationStats: ValidationStats = { total: 0, valid: 0, invalid: 0, retries: 0 };
+  private retryTracker: RetryTracker; // NEW: Smart retry tracking
 
   constructor(maxReuses: number = 3) {
     this.reuseTracker = {
       countryAddresses: new Map(),
       usageCounters: new Map(),
       maxReuses
+    };
+
+    // NEW: Initialize smart retry tracker
+    this.retryTracker = {
+      countryRetryAttempts: new Map(),
+      maxRetryAttempts: 3,
+      failedAddressIndices: new Map()
     };
   }
 
@@ -95,6 +117,95 @@ class AddressValidator {
     };
   }
 
+  // NEW: Smart retry validation that identifies which addresses need to be retried
+  validateAddressBatchWithSmartRetry(
+    addresses: GeneratedAddress[],
+    country: string
+  ): SmartRetryResult {
+    console.log(`=== SMART RETRY: Validating batch of ${addresses.length} addresses for ${country} ===`);
+    
+    const validAddresses: GeneratedAddress[] = [];
+    const invalidAddresses: GeneratedAddress[] = [];
+    const qualityStats = { high: 0, medium: 0, low: 0 };
+    const failedIndices: number[] = [];
+
+    addresses.forEach((address, index) => {
+      const validation = this.validateAddress(address);
+      qualityStats[validation.quality]++;
+
+      if (validation.isValid) {
+        validAddresses.push(address);
+      } else {
+        invalidAddresses.push(address);
+        failedIndices.push(index);
+        console.log(`❌ SMART RETRY: Invalid address at index ${index}:`, validation.errors);
+      }
+    });
+
+    const successRate = addresses.length > 0 ? validAddresses.length / addresses.length : 0;
+    
+    console.log(`✅ SMART RETRY: ${validAddresses.length}/${addresses.length} addresses valid (${(successRate * 100).toFixed(1)}%)`);
+    console.log(`SMART RETRY: Quality distribution - High: ${qualityStats.high}, Medium: ${qualityStats.medium}, Low: ${qualityStats.low}`);
+
+    // Track failed indices for this country
+    if (failedIndices.length > 0) {
+      this.retryTracker.failedAddressIndices.set(country, failedIndices);
+      console.log(`🔄 SMART RETRY: Marked ${failedIndices.length} addresses for retry in ${country}`);
+    }
+
+    // Determine if retry is needed and possible
+    const retryRequests: Array<{ country: string; count: number; failedIndices: number[] }> = [];
+    const currentRetryCount = this.retryTracker.countryRetryAttempts.get(country) || 0;
+
+    if (failedIndices.length > 0 && currentRetryCount < this.retryTracker.maxRetryAttempts) {
+      retryRequests.push({
+        country,
+        count: failedIndices.length,
+        failedIndices
+      });
+      console.log(`🚀 SMART RETRY: Will retry ${failedIndices.length} failed addresses for ${country} (attempt ${currentRetryCount + 1}/${this.retryTracker.maxRetryAttempts})`);
+    } else if (failedIndices.length > 0) {
+      console.log(`⚠️ SMART RETRY: Max retry attempts reached for ${country}, keeping ${validAddresses.length} valid addresses`);
+    }
+
+    return {
+      validAddresses,
+      invalidAddresses,
+      retryRequests,
+      qualityStats,
+      successRate
+    };
+  }
+
+  // NEW: Method to increment retry attempts
+  incrementRetryAttempt(country: string): void {
+    const currentCount = this.retryTracker.countryRetryAttempts.get(country) || 0;
+    this.retryTracker.countryRetryAttempts.set(country, currentCount + 1);
+    this.validationStats.retries++;
+    console.log(`🔄 SMART RETRY: Incremented retry count for ${country} to ${currentCount + 1}`);
+  }
+
+  // NEW: Check if country can be retried
+  canRetryCountry(country: string): boolean {
+    const currentCount = this.retryTracker.countryRetryAttempts.get(country) || 0;
+    return currentCount < this.retryTracker.maxRetryAttempts;
+  }
+
+  // NEW: Get retry statistics
+  getRetryStats(): Record<string, { attempts: number; maxAttempts: number; canRetry: boolean }> {
+    const stats: Record<string, { attempts: number; maxAttempts: number; canRetry: boolean }> = {};
+    
+    for (const [country, attempts] of this.retryTracker.countryRetryAttempts.entries()) {
+      stats[country] = {
+        attempts,
+        maxAttempts: this.retryTracker.maxRetryAttempts,
+        canRetry: attempts < this.retryTracker.maxRetryAttempts
+      };
+    }
+    
+    return stats;
+  }
+
   validateAddressBatch(addresses: GeneratedAddress[]): {
     validAddresses: GeneratedAddress[];
     invalidAddresses: GeneratedAddress[];
@@ -127,7 +238,6 @@ class AddressValidator {
     return { validAddresses, invalidAddresses, qualityStats, successRate };
   }
 
-  // NEW: Generate incremental addresses for rows 101+
   generateIncrementalAddress(baseAddress: GeneratedAddress, rowIndex: number): GeneratedAddress {
     // Modify house number to create variation
     const baseStreet = baseAddress.street;
@@ -230,7 +340,9 @@ class AddressValidator {
 
   resetValidationStats(): void {
     this.validationStats = { total: 0, valid: 0, invalid: 0, retries: 0 };
+    this.retryTracker.countryRetryAttempts.clear();
+    this.retryTracker.failedAddressIndices.clear();
   }
 }
 
-export { AddressValidator, type AddressValidationResult, type AddressReuseTracker, type ValidationStats };
+export { AddressValidator, type AddressValidationResult, type AddressReuseTracker, type ValidationStats, type SmartRetryResult };

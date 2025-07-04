@@ -2,6 +2,7 @@ import { AzureOpenAIService, GeneratedAddress, type AzureOpenAIConfig, type Batc
 import { EnhancedAddressGenerator, type EnhancedMaskingOptions, type DatasetAnalysis } from './enhancedAddressGeneration';
 import { GeoColumnDetector, type GeoColumnMapping } from './geoColumnDetection';
 import { DataPreservationEngine, type PreservationRule } from './dataPreservation';
+import { NationalityDerivationEngine, type NationalityDerivationResult } from './nationalityDerivation';
 import { DataType } from '@/types';
 
 interface AzureOpenAIMaskingOptions {
@@ -13,6 +14,7 @@ interface AzureOpenAIMaskingOptions {
   preserveDataStructure?: boolean;
   useIntelligentBatching?: boolean;
   useCountryDropdown?: boolean;
+  enableNationalityDerivation?: boolean;
 }
 
 class AzureOpenAIMasking {
@@ -20,15 +22,17 @@ class AzureOpenAIMasking {
   private enhancedGenerator: EnhancedAddressGenerator;
   private geoDetector: GeoColumnDetector;
   private preservationEngine: DataPreservationEngine;
+  private nationalityEngine: NationalityDerivationEngine;
   private countryAddressMap: Map<string, GeneratedAddress[]> = new Map();
   private countryIndexMap: Map<string, number> = new Map();
+  private nationalityCache: Map<string, NationalityDerivationResult> = new Map();
   private preservationRules: PreservationRule[] = [];
   private geoMapping: GeoColumnMapping = {};
   private options: AzureOpenAIMaskingOptions;
   private datasetAnalysis: DatasetAnalysis | null = null;
 
   constructor(options: AzureOpenAIMaskingOptions) {
-    console.log('=== FIXED: Initializing Enhanced AzureOpenAIMasking ===');
+    console.log('=== FIXED: Initializing Enhanced AzureOpenAIMasking with Nationality Derivation ===');
     
     this.options = {
       batchSize: 50,
@@ -36,11 +40,13 @@ class AzureOpenAIMasking {
       preserveDataStructure: true,
       useIntelligentBatching: true,
       useCountryDropdown: false,
+      enableNationalityDerivation: true,
       ...options
     };
     
     console.log(`FIXED: Country dropdown enabled: ${this.options.useCountryDropdown}`);
     console.log(`FIXED: Selected countries: ${this.options.selectedCountries?.join(', ') || 'None'}`);
+    console.log(`NEW: Nationality derivation enabled: ${this.options.enableNationalityDerivation}`);
     
     this.service = new AzureOpenAIService(options.config);
     
@@ -54,6 +60,7 @@ class AzureOpenAIMasking {
 
     this.geoDetector = new GeoColumnDetector();
     this.preservationEngine = new DataPreservationEngine();
+    this.nationalityEngine = new NationalityDerivationEngine();
   }
 
   async initializeForDataset(
@@ -102,10 +109,42 @@ class AzureOpenAIMasking {
       console.log('Created preservation rules:', this.preservationRules.length);
     }
 
+    // NEW: Pre-calculate nationality mappings if enabled
+    if (this.options.enableNationalityDerivation && countryColumnName) {
+      await this.preCalculateNationalities(data, countryColumnName);
+    }
+
     // Generate addresses using enhanced system with proper country logic
     await this.preGenerateAddresses(data, countryColumnName);
 
-    console.log('FIXED: Initialization complete with country selection logic');
+    console.log('FIXED: Initialization complete with country selection logic and nationality derivation');
+  }
+
+  private async preCalculateNationalities(
+    data: Record<string, string>[],
+    countryColumnName: string
+  ): Promise<void> {
+    console.log('=== NATIONALITY: Pre-calculating nationality mappings ===');
+    
+    // Extract unique country values from the dataset
+    const countryValues = [...new Set(
+      data.map(row => row[countryColumnName])
+        .filter(Boolean)
+        .map(country => country.trim())
+    )];
+
+    console.log(`NATIONALITY: Found ${countryValues.length} unique countries in dataset`);
+
+    // Derive nationalities for all unique countries
+    const nationalityResults = this.nationalityEngine.deriveNationalityBatch(countryValues);
+    
+    // Cache the results
+    for (const [country, result] of nationalityResults.entries()) {
+      this.nationalityCache.set(country, result);
+      console.log(`NATIONALITY: Cached ${country} → ${result.nationality} (confidence: ${result.confidence})`);
+    }
+
+    console.log(`✅ NATIONALITY: Pre-calculated nationalities for ${this.nationalityCache.size} countries`);
   }
 
   private async preGenerateAddresses(
@@ -230,6 +269,11 @@ class AzureOpenAIMasking {
   async maskData(value: string, dataType: DataType, targetCountry?: string, rowIndex?: number): Promise<string> {
     if (!value || value.trim() === '') return value;
 
+    // NEW: Handle nationality derivation
+    if (dataType === 'Nationality' || dataType === 'String' && value.toLowerCase().includes('nationality')) {
+      return this.deriveNationality(targetCountry || 'Unknown');
+    }
+
     let country: string;
     
     if (this.options.useCountryDropdown && this.options.selectedCountries?.length) {
@@ -298,6 +342,29 @@ class AzureOpenAIMasking {
     return maskedValue;
   }
 
+  deriveNationality(countryValue: string): string {
+    if (!this.options.enableNationalityDerivation) {
+      return countryValue;
+    }
+
+    // Check cache first
+    const cached = this.nationalityCache.get(countryValue);
+    if (cached) {
+      console.log(`🎯 NATIONALITY: Using cached result - ${countryValue} → ${cached.nationality}`);
+      return cached.nationality;
+    }
+
+    // Derive nationality on-the-fly
+    const derivationResult = this.nationalityEngine.deriveNationality(countryValue);
+    
+    // Cache the result
+    this.nationalityCache.set(countryValue, derivationResult);
+    
+    console.log(`🌍 NATIONALITY: Derived - ${countryValue} → ${derivationResult.nationality} (confidence: ${derivationResult.confidence})`);
+    
+    return derivationResult.nationality;
+  }
+
   async testConnection(): Promise<boolean> {
     return await this.service.testConnection();
   }
@@ -306,6 +373,7 @@ class AzureOpenAIMasking {
     this.enhancedGenerator.clearCache();
     this.countryAddressMap.clear();
     this.countryIndexMap.clear();
+    this.nationalityCache.clear();
     this.preservationRules = [];
     this.geoMapping = {};
   }
@@ -315,7 +383,9 @@ class AzureOpenAIMasking {
       enhancedGenerator: this.enhancedGenerator.getCacheStats(),
       loadedCountries: this.getLoadedCountries(),
       preservationRules: this.preservationRules.length,
-      validationStats: this.enhancedGenerator.getValidationStats()
+      validationStats: this.enhancedGenerator.getValidationStats(),
+      smartRetryStats: this.enhancedGenerator.getSmartRetryStats(),
+      nationalityCache: this.nationalityCache.size
     };
   }
 
@@ -341,6 +411,24 @@ class AzureOpenAIMasking {
 
   getAddressReuseStats(): Record<string, { available: number; used: number; reuseFactor: number }> {
     return this.enhancedGenerator.getAddressReuseStats();
+  }
+
+  getNationalityStats(): {
+    cacheSize: number;
+    derivationEngineStats: any;
+    cachedNationalities: Array<{ country: string; nationality: string; confidence: string }>;
+  } {
+    const cachedNationalities = Array.from(this.nationalityCache.entries()).map(([country, result]) => ({
+      country,
+      nationality: result.nationality,
+      confidence: result.confidence
+    }));
+
+    return {
+      cacheSize: this.nationalityCache.size,
+      derivationEngineStats: this.nationalityEngine.getDerivationStats(),
+      cachedNationalities
+    };
   }
 }
 

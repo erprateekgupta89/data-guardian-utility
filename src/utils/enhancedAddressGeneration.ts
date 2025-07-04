@@ -1,7 +1,7 @@
 import { AzureOpenAIService, type GeneratedAddress, type BatchAddressGenerationRequest } from '@/services/azureOpenAI';
 import { GeoReferenceSystem } from './geoReference';
 import { CountryProportionCalculator, type ProportionalMaskingPlan } from './countryProportions';
-import { AddressValidator } from './addressValidator';
+import { AddressValidator, type SmartRetryResult } from './addressValidator';
 
 interface AddressCache {
   [country: string]: {
@@ -105,8 +105,8 @@ class EnhancedAddressGenerator {
       console.log(`${req.country}: ${req.count} addresses needed (for ${req.rowIndices.length} rows)`);
     });
 
-    // STEP 3: Generate addresses with validation and retry logic
-    const countryAddressMap = await this.generateWithValidationAndRetry(countryRequirements);
+    // STEP 3: Generate addresses with smart validation and retry logic
+    const countryAddressMap = await this.generateWithSmartRetry(countryRequirements);
 
     // STEP 4: Initialize address validator for reuse (important for large datasets)
     if (datasetAnalysis.isLargeDataset) {
@@ -208,86 +208,142 @@ class EnhancedAddressGenerator {
     return requirements;
   }
 
-  private async generateWithValidationAndRetry(
+  private async generateWithSmartRetry(
     countryRequirements: CountryRequirement[]
   ): Promise<Map<string, GeneratedAddress[]>> {
     if (countryRequirements.length === 0) {
-      console.log('❌ FIXED: No country requirements - returning empty map');
+      console.log('❌ SMART RETRY: No country requirements - returning empty map');
       return new Map();
     }
 
-    let attempt = 0;
-    const maxAttempts = this.options.maxRetries;
+    console.log('=== SMART RETRY: Starting generation with smart retry logic ===');
     
-    while (attempt < maxAttempts) {
-      attempt++;
-      console.log(`=== VALIDATION: Attempt ${attempt}/${maxAttempts} ===`);
+    const finalResults = new Map<string, GeneratedAddress[]>();
+    let remainingRequirements = [...countryRequirements];
+
+    // Initial generation attempt
+    console.log('🚀 SMART RETRY: Initial generation attempt');
+    const initialResults = await this.performBatchGeneration(remainingRequirements);
+
+    // Process initial results and identify what needs retry
+    for (const [country, addresses] of initialResults.entries()) {
+      const smartValidation = this.addressValidator.validateAddressBatchWithSmartRetry(addresses, country);
       
-      try {
-        // Make the API call
-        const batchRequest: BatchAddressGenerationRequest = {
-          countries: countryRequirements.map(req => ({
-            country: req.country,
-            count: req.count
-          }))
-        };
-
-        console.log('VALIDATION: Making Azure OpenAI API call...');
-        console.log('VALIDATION: Batch request:', JSON.stringify(batchRequest, null, 2));
+      // Store valid addresses
+      finalResults.set(country, smartValidation.validAddresses);
+      
+      // Process retry requests
+      if (smartValidation.retryRequests.length > 0) {
+        const retryReq = smartValidation.retryRequests[0];
+        console.log(`🔄 SMART RETRY: ${country} needs ${retryReq.count} addresses retried`);
         
-        const batchResponse = await this.options.azureService.generateBatchAddresses(batchRequest);
-        
-        console.log(`✅ VALIDATION: API call completed on attempt ${attempt}`);
-        console.log(`VALIDATION: Generated addresses for ${batchResponse.addressesByCountry.size} countries`);
-
-        // Validate the results
-        const validatedResults = new Map<string, GeneratedAddress[]>();
-        let overallSuccessRate = 0;
-        let totalAddresses = 0;
-        let validAddresses = 0;
-
-        for (const [country, addresses] of batchResponse.addressesByCountry.entries()) {
-          const validation = this.addressValidator.validateAddressBatch(addresses);
-          validatedResults.set(country, validation.validAddresses);
-          
-          totalAddresses += addresses.length;
-          validAddresses += validation.validAddresses.length;
-          
-          console.log(`VALIDATION: ${country} - ${validation.validAddresses.length}/${addresses.length} valid (${(validation.successRate * 100).toFixed(1)}%)`);
+        // Update remaining requirements for retry
+        const originalReq = remainingRequirements.find(req => req.country === country);
+        if (originalReq) {
+          remainingRequirements = remainingRequirements.filter(req => req.country !== country);
+          remainingRequirements.push({
+            country,
+            count: retryReq.count,
+            rowIndices: retryReq.failedIndices
+          });
         }
-
-        overallSuccessRate = totalAddresses > 0 ? validAddresses / totalAddresses : 0;
-        console.log(`VALIDATION: Overall success rate: ${(overallSuccessRate * 100).toFixed(1)}%`);
-
-        // Check if quality meets threshold
-        if (overallSuccessRate >= this.options.qualityThreshold) {
-          console.log(`✅ VALIDATION: Quality threshold met (${(overallSuccessRate * 100).toFixed(1)}% >= ${(this.options.qualityThreshold * 100).toFixed(1)}%)`);
-          return validatedResults;
-        } else {
-          console.log(`⚠️ VALIDATION: Quality below threshold (${(overallSuccessRate * 100).toFixed(1)}% < ${(this.options.qualityThreshold * 100).toFixed(1)}%)`);
-          
-          if (attempt < maxAttempts) {
-            console.log(`VALIDATION: Retrying in attempt ${attempt + 1}...`);
-            // Wait a bit before retry
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            continue;
-          }
-        }
-
-      } catch (error) {
-        console.error(`❌ VALIDATION: Attempt ${attempt} failed:`, error);
-        
-        if (attempt < maxAttempts) {
-          console.log(`VALIDATION: Retrying in attempt ${attempt + 1}...`);
-          // Wait before retry
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          continue;
-        }
+      } else {
+        // Remove from retry list if all addresses are valid
+        remainingRequirements = remainingRequirements.filter(req => req.country !== country);
       }
     }
 
-    console.error(`❌ VALIDATION: All ${maxAttempts} attempts failed or quality too low`);
-    return new Map();
+    // Perform smart retries for failed addresses only
+    let retryAttempt = 1;
+    while (remainingRequirements.length > 0 && retryAttempt <= this.options.maxRetries) {
+      console.log(`=== SMART RETRY: Attempt ${retryAttempt} for ${remainingRequirements.length} countries ===`);
+      
+      // Filter out countries that have exceeded retry limits
+      const retriableRequirements = remainingRequirements.filter(req => 
+        this.addressValidator.canRetryCountry(req.country)
+      );
+
+      if (retriableRequirements.length === 0) {
+        console.log('⚠️ SMART RETRY: No more retriable countries');
+        break;
+      }
+
+      // Increment retry counters
+      retriableRequirements.forEach(req => {
+        this.addressValidator.incrementRetryAttempt(req.country);
+      });
+
+      // Perform retry generation for failed addresses only
+      const retryResults = await this.performBatchGeneration(retriableRequirements);
+      
+      // Process retry results
+      const newRemainingRequirements: CountryRequirement[] = [];
+      
+      for (const [country, addresses] of retryResults.entries()) {
+        const smartValidation = this.addressValidator.validateAddressBatchWithSmartRetry(addresses, country);
+        
+        // Merge new valid addresses with existing ones
+        const existingAddresses = finalResults.get(country) || [];
+        const mergedAddresses = [...existingAddresses, ...smartValidation.validAddresses];
+        finalResults.set(country, mergedAddresses);
+        
+        console.log(`✅ SMART RETRY: ${country} now has ${mergedAddresses.length} valid addresses`);
+        
+        // Check if more retries needed
+        if (smartValidation.retryRequests.length > 0 && this.addressValidator.canRetryCountry(country)) {
+          const retryReq = smartValidation.retryRequests[0];
+          newRemainingRequirements.push({
+            country,
+            count: retryReq.count,
+            rowIndices: retryReq.failedIndices
+          });
+        }
+      }
+      
+      remainingRequirements = newRemainingRequirements;
+      retryAttempt++;
+    }
+
+    // Log final results
+    console.log('=== SMART RETRY: Final Results ===');
+    const retryStats = this.addressValidator.getRetryStats();
+    for (const [country, addresses] of finalResults.entries()) {
+      const stats = retryStats[country];
+      console.log(`${country}: ${addresses.length} valid addresses (retry attempts: ${stats?.attempts || 0})`);
+    }
+
+    return finalResults;
+  }
+
+  private async performBatchGeneration(
+    requirements: CountryRequirement[]
+  ): Promise<Map<string, GeneratedAddress[]>> {
+    try {
+      const batchRequest: BatchAddressGenerationRequest = {
+        countries: requirements.map(req => ({
+          country: req.country,
+          count: req.count
+        }))
+      };
+
+      console.log('SMART RETRY: Making Azure OpenAI API call...');
+      console.log('SMART RETRY: Batch request:', JSON.stringify(batchRequest, null, 2));
+      
+      const batchResponse = await this.options.azureService.generateBatchAddresses(batchRequest);
+      console.log(`✅ SMART RETRY: API call completed for ${batchResponse.addressesByCountry.size} countries`);
+      
+      return batchResponse.addressesByCountry;
+    } catch (error) {
+      console.error('❌ SMART RETRY: API call failed:', error);
+      return new Map();
+    }
+  }
+
+  async generateWithValidationAndRetry(
+    countryRequirements: CountryRequirement[]
+  ): Promise<Map<string, GeneratedAddress[]>> {
+    console.log('⚠️ LEGACY: Using legacy validation and retry - consider using smart retry');
+    return this.generateWithSmartRetry(countryRequirements);
   }
 
   getAddressForRow(country: string, rowIndex: number, isLargeDataset: boolean): GeneratedAddress | null {
@@ -317,7 +373,7 @@ class EnhancedAddressGenerator {
       rowIndices: Array.from({ length: count }, (_, i) => i)
     }];
 
-    const batchResult = await this.generateWithValidationAndRetry(countryRequirements);
+    const batchResult = await this.generateWithSmartRetry(countryRequirements);
     const addresses = batchResult.get(country) || [];
     
     // Cache the results
@@ -378,6 +434,10 @@ class EnhancedAddressGenerator {
 
   getValidationStats() {
     return this.addressValidator.getValidationStats();
+  }
+
+  getSmartRetryStats() {
+    return this.addressValidator.getRetryStats();
   }
 }
 
