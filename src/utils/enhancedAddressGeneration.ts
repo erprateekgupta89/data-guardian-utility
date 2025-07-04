@@ -1,7 +1,7 @@
-
 import { AzureOpenAIService, type GeneratedAddress, type BatchAddressGenerationRequest } from '@/services/azureOpenAI';
 import { GeoReferenceSystem } from './geoReference';
 import { CountryProportionCalculator, type ProportionalMaskingPlan } from './countryProportions';
+import { AddressValidator } from './addressValidator';
 
 interface AddressCache {
   [country: string]: {
@@ -25,10 +25,18 @@ interface EnhancedMaskingOptions {
   qualityThreshold: number; // minimum success rate
 }
 
+interface DatasetAnalysis {
+  totalRows: number;
+  isLargeDataset: boolean; // ≥100 rows
+  requiresProportionalLogic: boolean;
+  estimatedAddressesNeeded: number;
+}
+
 class EnhancedAddressGenerator {
   private addressCache: AddressCache = {};
   private geoReference: GeoReferenceSystem;
   private proportionCalculator: CountryProportionCalculator;
+  private addressValidator: AddressValidator;
   private options: EnhancedMaskingOptions;
 
   constructor(options: EnhancedMaskingOptions) {
@@ -41,6 +49,36 @@ class EnhancedAddressGenerator {
     };
     this.geoReference = new GeoReferenceSystem();
     this.proportionCalculator = new CountryProportionCalculator();
+    this.addressValidator = new AddressValidator();
+  }
+
+  private analyzeDataset(
+    data: Record<string, string>[],
+    countryColumnName?: string
+  ): DatasetAnalysis {
+    const totalRows = data.length;
+    const isLargeDataset = totalRows >= 100;
+
+    console.log('=== Dataset Analysis ===');
+    console.log(`Total rows: ${totalRows}`);
+    console.log(`Is large dataset (≥100 rows): ${isLargeDataset}`);
+
+    // For large datasets, we need fewer unique addresses since we'll reuse them
+    const estimatedAddressesNeeded = isLargeDataset 
+      ? Math.min(totalRows, Math.ceil(totalRows * 0.3)) // 30% of rows, capped at total
+      : totalRows;
+
+    const analysis: DatasetAnalysis = {
+      totalRows,
+      isLargeDataset,
+      requiresProportionalLogic: isLargeDataset && !!countryColumnName,
+      estimatedAddressesNeeded
+    };
+
+    console.log(`Estimated addresses needed: ${estimatedAddressesNeeded}`);
+    console.log(`Requires proportional logic: ${analysis.requiresProportionalLogic}`);
+
+    return analysis;
   }
 
   async generateOptimizedAddresses(
@@ -48,32 +86,79 @@ class EnhancedAddressGenerator {
     countryColumnName: string,
     selectedCountries?: string[]
   ): Promise<Map<string, GeneratedAddress[]>> {
-    console.log('=== FIXED: Starting Optimized Batch Address Generation ===');
-    console.log(`Total rows in dataset: ${data.length}`);
-    console.log(`Country column: ${countryColumnName}`);
-    console.log(`Selected countries override: ${selectedCountries?.join(', ') || 'None'}`);
+    console.log('=== ENHANCED: Starting Optimized Batch Address Generation ===');
     
-    // FIXED: Calculate exact country requirements from actual data
-    const countryRequirements = this.calculateExactCountryRequirements(
+    // STEP 1: Analyze dataset size and requirements
+    const datasetAnalysis = this.analyzeDataset(data, countryColumnName);
+    
+    // STEP 2: Calculate requirements based on dataset size
+    const countryRequirements = datasetAnalysis.isLargeDataset
+      ? this.calculateProportionalRequirements(data, countryColumnName, selectedCountries, datasetAnalysis)
+      : this.calculateExactCountryRequirements(data, countryColumnName, selectedCountries);
+
+    console.log('=== ENHANCED: Country Requirements ===');
+    countryRequirements.forEach(req => {
+      console.log(`${req.country}: ${req.count} addresses needed (for ${req.rowIndices.length} rows)`);
+    });
+
+    // STEP 3: Generate addresses with single batch call
+    const countryAddressMap = await this.generateSingleBatchCall(countryRequirements);
+
+    // STEP 4: Initialize address validator for reuse (important for large datasets)
+    if (datasetAnalysis.isLargeDataset) {
+      this.addressValidator.initializeAddressPool(countryAddressMap);
+      console.log('✅ ENHANCED: Address reuse system initialized for large dataset');
+    }
+
+    console.log('=== ENHANCED: Final Address Map ===');
+    for (const [country, addresses] of countryAddressMap.entries()) {
+      console.log(`${country}: Generated ${addresses.length} unique addresses`);
+    }
+
+    return countryAddressMap;
+  }
+
+  private calculateProportionalRequirements(
+    data: Record<string, string>[],
+    countryColumnName: string,
+    selectedCountries?: string[],
+    analysis: DatasetAnalysis
+  ): CountryRequirement[] {
+    console.log('=== ENHANCED: Calculating Proportional Requirements (≥100 rows) ===');
+    
+    // Use proportional logic for large datasets
+    const proportionalPlan = this.proportionCalculator.calculateProportions(
       data,
       countryColumnName,
       selectedCountries
     );
 
-    console.log('=== FIXED: Exact Country Requirements ===');
-    countryRequirements.forEach(req => {
-      console.log(`${req.country}: ${req.count} occurrences (rows: ${req.rowIndices.slice(0, 5).join(', ')}${req.rowIndices.length > 5 ? '...' : ''})`);
+    const requirements: CountryRequirement[] = proportionalPlan.countryDistributions.map(dist => {
+      // For large datasets, generate fewer unique addresses (30% of actual count)
+      const uniqueAddressCount = Math.max(1, Math.ceil(dist.count * 0.3));
+      
+      // Get all row indices for this country
+      const rowIndices: number[] = [];
+      data.forEach((row, index) => {
+        let country = row[countryColumnName]?.trim();
+        if (selectedCountries && selectedCountries.length > 0) {
+          country = selectedCountries[index % selectedCountries.length];
+        }
+        if (country === dist.country) {
+          rowIndices.push(index);
+        }
+      });
+
+      console.log(`ENHANCED: ${dist.country} - ${dist.count} total rows, generating ${uniqueAddressCount} unique addresses`);
+      
+      return {
+        country: dist.country,
+        count: uniqueAddressCount, // Reduced count for API efficiency
+        rowIndices
+      };
     });
 
-    // FIXED: Use SINGLE batch API call for ALL countries
-    const countryAddressMap = await this.generateSingleBatchCall(countryRequirements);
-
-    console.log('=== FIXED: Final Address Map ===');
-    for (const [country, addresses] of countryAddressMap.entries()) {
-      console.log(`${country}: Generated ${addresses.length} addresses`);
-    }
-
-    return countryAddressMap;
+    return requirements;
   }
 
   private calculateExactCountryRequirements(
@@ -156,6 +241,19 @@ class EnhancedAddressGenerator {
     }
   }
 
+  getAddressForRow(country: string, rowIndex: number, isLargeDataset: boolean): GeneratedAddress | null {
+    if (isLargeDataset) {
+      // For large datasets, use address reuse system
+      return this.addressValidator.getAddressForReuse(country, rowIndex);
+    } else {
+      // For small datasets, use sequential access
+      const addresses = this.addressCache[country]?.addresses || [];
+      if (addresses.length === 0) return null;
+      
+      return addresses[rowIndex % addresses.length];
+    }
+  }
+
   async getAddressesForCountry(country: string, count: number): Promise<GeneratedAddress[]> {
     // Check cache first
     const cached = this.getCachedAddresses(country, count);
@@ -224,6 +322,10 @@ class EnhancedAddressGenerator {
 
     return stats;
   }
+
+  getAddressReuseStats(): Record<string, { available: number; used: number; reuseFactor: number }> {
+    return this.addressValidator.getReuseStats();
+  }
 }
 
-export { EnhancedAddressGenerator, type EnhancedMaskingOptions, type CountryRequirement };
+export { EnhancedAddressGenerator, type EnhancedMaskingOptions, type CountryRequirement, type DatasetAnalysis };

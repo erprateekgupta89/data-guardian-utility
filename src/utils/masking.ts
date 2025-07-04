@@ -154,17 +154,24 @@ interface MaskingOptions {
   azureOpenAIConfig?: AzureOpenAIMaskingOptions;
 }
 
-// Enhanced process and mask all data with FIXED API call logic
+// Enhanced process and mask all data with DATASET-AWARE API call logic
 export const maskDataSet = async (
   data: Record<string, string>[],
   columns: ColumnInfo[],
   options?: MaskingOptions
 ): Promise<Record<string, string>[]> => {
-  console.log('=== FIXED: Starting Enhanced Masking Process ===');
+  console.log('=== ENHANCED: Starting Dataset-Aware Masking Process ===');
   console.log(`Data rows: ${data.length}`);
   console.log(`Columns: ${columns.length}`);
+  console.log(`Is large dataset (≥100 rows): ${data.length >= 100}`);
   console.log(`Azure OpenAI enabled: ${options?.useAzureOpenAI}`);
   console.log(`Selected countries: ${options?.selectedCountries?.join(', ') || 'None'}`);
+
+  // Dataset size analysis
+  const isLargeDataset = data.length >= 100;
+  if (isLargeDataset) {
+    console.log('🔄 ENHANCED: Large dataset detected - using address reuse strategy');
+  }
 
   // --- Pre-masking: Re-infer and correct column data types ---
   columns.forEach(col => {
@@ -208,10 +215,10 @@ export const maskDataSet = async (
     }
   });
 
-  // FIXED: Initialize Enhanced Azure OpenAI masking if enabled
+  // ENHANCED: Initialize Dataset-Aware Azure OpenAI masking if enabled
   let azureOpenAIMasking: AzureOpenAIMasking | null = null;
   if (options?.useAzureOpenAI && options?.azureOpenAIConfig) {
-    console.log('=== FIXED: Initializing Enhanced Azure OpenAI masking system ===');
+    console.log('=== ENHANCED: Initializing Dataset-Aware Azure OpenAI masking system ===');
     azureOpenAIMasking = new AzureOpenAIMasking({
       ...options.azureOpenAIConfig,
       preserveDataStructure: true,
@@ -220,23 +227,29 @@ export const maskDataSet = async (
     
     // Find country column for proportional masking
     const countryColumn = columns.find(col => col.name.toLowerCase() === 'country');
-    console.log(`FIXED: Country column found: ${countryColumn?.name || 'None'}`);
+    console.log(`ENHANCED: Country column found: ${countryColumn?.name || 'None'}`);
     
-    // FIXED: Initialize the enhanced system with exact dataset requirements
-    console.log('FIXED: Initializing Azure OpenAI system with exact dataset...');
+    // Initialize the enhanced system with dataset analysis
+    console.log('ENHANCED: Initializing Azure OpenAI system with dataset-aware logic...');
     await azureOpenAIMasking.initializeForDataset(
       workingData,
       columns,
       countryColumn?.name
     );
     
-    console.log('✅ FIXED: Enhanced Azure OpenAI system initialized - NO MORE API CALLS should be made');
+    // Log dataset analysis results
+    const analysis = azureOpenAIMasking.getDatasetAnalysis();
+    if (analysis) {
+      console.log('✅ ENHANCED: Dataset analysis completed:', analysis);
+    }
+    
+    console.log('✅ ENHANCED: Dataset-aware Azure OpenAI system initialized');
   }
   
-  console.log('=== FIXED: Starting row-by-row masking (using pre-generated data only) ===');
+  console.log('=== ENHANCED: Starting row-by-row masking with dataset-aware logic ===');
   return Promise.all(workingData.map(async (row, index) => {
     if (index % 50 === 0) {
-      console.log(`FIXED: Processing row ${index + 1}/${workingData.length}`);
+      console.log(`ENHANCED: Processing row ${index + 1}/${workingData.length} (Large dataset: ${isLargeDataset})`);
     }
 
     const maskedRow: Record<string, string> = {};
@@ -257,7 +270,7 @@ export const maskDataSet = async (
         const randomIndex = Math.floor(Math.random() * options.selectedCountries.length);
         maskedRow[column.name] = options.selectedCountries[randomIndex];
       } else if (azureOpenAIMasking && ['Address', 'City', 'State', 'Postal Code'].includes(column.dataType)) {
-        // FIXED: Use Enhanced Azure OpenAI for location data (NO fallback API calls)
+        // ENHANCED: Use Dataset-Aware Azure OpenAI for location data
         try {
           let targetCountry = options?.selectedCountries?.[0] || 'United States';
           
@@ -266,15 +279,18 @@ export const maskDataSet = async (
             targetCountry = row[countryColumn.name];
           }
           
-          console.log(`FIXED: Row ${index} - Using Azure OpenAI for ${column.dataType} in ${targetCountry}`);
+          console.log(`ENHANCED: Row ${index} - Using dataset-aware Azure OpenAI for ${column.dataType} in ${targetCountry}`);
+          
+          // Pass row index for enhanced address selection logic
           maskedRow[column.name] = await azureOpenAIMasking.maskData(
             row[column.name], 
             column.dataType,
-            targetCountry
+            targetCountry,
+            index // Pass row index for large dataset logic
           );
         } catch (error) {
-          console.error(`❌ FIXED: Azure OpenAI masking failed for ${column.name} at row ${index}:`, error);
-          // FIXED: Fallback to regular masking (no API calls)
+          console.error(`❌ ENHANCED: Azure OpenAI masking failed for ${column.name} at row ${index}:`, error);
+          // Fallback to regular masking (no API calls)
           maskedRow[column.name] = maskData(
             row[column.name], 
             column.dataType,
