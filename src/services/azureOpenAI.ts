@@ -1,3 +1,4 @@
+
 interface AzureOpenAIConfig {
   endpoint: string;
   apiKey: string;
@@ -431,7 +432,7 @@ Example format:
 
   private parseAndValidateAddresses(content: string, expectedCountry: string): GeneratedAddress[] {
     try {
-      console.log('=== Parsing Response ===');
+      console.log('=== PLAN: Enhanced Parsing Response ===');
       console.log('Raw content:', content);
       
       // Try to extract JSON array from response
@@ -476,13 +477,16 @@ Example format:
   }
 
   private parseAddressStringEnhanced(addressString: string, expectedCountry: string): GeneratedAddress {
-    console.log(`FIXED: Enhanced parsing for ${expectedCountry}:`, addressString);
+    console.log(`🔧 PLAN: Clean address parsing for ${expectedCountry}:`, addressString);
+    
+    // PLAN: Remove unnecessary comma additions and clean formatting
+    const cleanAddress = addressString.trim().replace(/\s+/g, ' ').replace(/,\s*,/g, ',');
     
     // Split by commas and clean up parts
-    const parts = addressString.split(',').map(part => part.trim()).filter(part => part.length > 0);
-    console.log(`FIXED: Address parts for ${expectedCountry}:`, parts);
+    const parts = cleanAddress.split(',').map(part => part.trim()).filter(part => part.length > 0);
+    console.log(`🔧 PLAN: Clean address parts for ${expectedCountry}:`, parts);
     
-    // Default structure - CRUCIAL: Use appropriate defaults for each country
+    // Default structure - Use appropriate defaults for each country
     let street = '';
     let city = '';
     let state = '';
@@ -491,8 +495,8 @@ Example format:
 
     try {
       // Detect address format based on country and structure
-      const format = this.detectAddressFormat(addressString, expectedCountry);
-      console.log(`FIXED: Detected format for ${expectedCountry}: ${format}`);
+      const format = this.detectAddressFormat(cleanAddress, expectedCountry);
+      console.log(`🔧 PLAN: Detected format for ${expectedCountry}: ${format}`);
       
       switch (format) {
         case 'US_FORMAT':
@@ -550,10 +554,8 @@ Example format:
           break;
           
         case 'BRAZIL_FORMAT':
-          // FIXED: Enhanced Brazil format handling
-          // Format: "Rua das Flores, 123, São Paulo, SP 01001-000, Brazil"
-          // OR: "123 Avenida Paulista, São Paulo SP 01310-100, Brazil"
-          console.log(`FIXED: Processing Brazil format with ${parts.length} parts:`, parts);
+          // PLAN: Enhanced Brazil format handling with clean parsing
+          console.log(`🔧 PLAN: Processing Brazil format with ${parts.length} parts:`, parts);
           
           if (parts.length >= 3) {
             // Brazil addresses often combine street name and number
@@ -568,7 +570,7 @@ Example format:
                 state = stateAndZip[0];
                 postalCode = stateAndZip.slice(1).join(' ');
               } else {
-                state = ''; // FIXED: Don't use fallback for Brazil
+                state = '';
                 postalCode = parts[3];
               }
             } else {
@@ -579,23 +581,23 @@ Example format:
                 state = stateAndZip[0];
                 postalCode = stateAndZip.slice(1).join(' ');
               } else {
-                state = ''; // FIXED: Don't use fallback for Brazil
+                state = '';
                 postalCode = parts[2];
               }
             }
             country = expectedCountry; // Always use expected country
           } else {
-            // FIXED: Minimal fallback for Brazil without contamination
-            street = parts[0] || addressString;
+            // Minimal fallback for Brazil without contamination
+            street = parts[0] || cleanAddress;
             city = parts[1] || 'São Paulo';
-            state = ''; // FIXED: Brazil regions vary, leave empty rather than use fallback
+            state = '';
             postalCode = '01000-000';
             country = expectedCountry;
           }
           break;
           
         default:
-          // FIXED: Improved generic fallback with country-specific defaults
+          // PLAN: Improved generic fallback with country-specific defaults
           if (parts.length >= 3) {
             street = parts[0];
             city = parts[1];
@@ -606,7 +608,6 @@ Example format:
                 state = stateAndZip[0];
                 postalCode = stateAndZip.slice(1).join(' ');
               } else {
-                // FIXED: Country-specific state defaults
                 state = this.getCountrySpecificStateDefault(expectedCountry);
                 postalCode = parts[3];
               }
@@ -616,8 +617,8 @@ Example format:
               country = expectedCountry;
             }
           } else {
-            // FIXED: Last resort fallback with country-appropriate defaults
-            street = addressString;
+            // Last resort fallback with country-appropriate defaults
+            street = cleanAddress;
             city = this.getCountrySpecificCityDefault(expectedCountry);
             state = this.getCountrySpecificStateDefault(expectedCountry);
             postalCode = this.getCountrySpecificPostalDefault(expectedCountry);
@@ -625,13 +626,13 @@ Example format:
           }
       }
 
-      // Clean up postal code (remove extra characters)
+      // PLAN: Clean up postal code (remove extra characters) - SIMPLIFIED
       postalCode = postalCode.replace(/[^\w\s-]/g, '').trim();
       
     } catch (error) {
-      console.error(`FIXED: Error parsing address for ${expectedCountry}:`, error);
-      // FIXED: Country-specific fallback values
-      street = addressString.length > 50 ? addressString.substring(0, 50) : addressString;
+      console.error(`🔧 PLAN: Error parsing address for ${expectedCountry}:`, error);
+      // Country-specific fallback values
+      street = cleanAddress.length > 50 ? cleanAddress.substring(0, 50) : cleanAddress;
       city = this.getCountrySpecificCityDefault(expectedCountry);
       state = this.getCountrySpecificStateDefault(expectedCountry);
       postalCode = this.getCountrySpecificPostalDefault(expectedCountry);
@@ -646,7 +647,7 @@ Example format:
       country: expectedCountry
     };
 
-    console.log(`FIXED: Enhanced parsed result for ${expectedCountry}:`, result);
+    console.log(`✅ PLAN: Clean parsed result for ${expectedCountry}:`, result);
     return result;
   }
 
