@@ -230,38 +230,68 @@ Example format:
     requestedCountries: { country: string; count: number }[]
   ): BatchAddressGenerationResponse {
     try {
-      console.log('=== Parsing Batch Response ===');
+      console.log('=== FIXED: Enhanced Batch Response Parsing ===');
       console.log('Raw batch content:', content);
       
-      // Extract JSON object from response
-      let jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        console.error('No JSON object found in batch response');
-        throw new Error('No JSON object found in batch response');
+      // Step 1: Clean and extract JSON from response
+      const cleanedContent = this.cleanAndExtractJSON(content);
+      console.log('FIXED: Cleaned content for parsing:', cleanedContent);
+      
+      if (!cleanedContent) {
+        throw new Error('No valid JSON content found after cleaning');
       }
 
-      const addressData = JSON.parse(jsonMatch[0]);
-      console.log('Parsed address data:', addressData);
+      // Step 2: Parse the JSON
+      const addressData = JSON.parse(cleanedContent);
+      console.log('FIXED: Successfully parsed address data:', addressData);
+
+      // Step 3: Validate the structure
+      if (!addressData || typeof addressData !== 'object') {
+        throw new Error('Parsed data is not a valid object');
+      }
 
       const addressesByCountry = new Map<string, GeneratedAddress[]>();
       let totalGenerated = 0;
       const totalRequested = requestedCountries.reduce((sum, c) => sum + c.count, 0);
 
-      // Process each country's addresses with improved parsing
+      // Step 4: Process each country's addresses with enhanced parsing
       for (const { country, count } of requestedCountries) {
+        console.log(`FIXED: Processing addresses for ${country} (requested: ${count})`);
+        
         const countryAddresses = addressData[country] || [];
+        console.log(`FIXED: Raw addresses for ${country}:`, countryAddresses);
+        
         if (Array.isArray(countryAddresses)) {
-          const structuredAddresses = countryAddresses
+          // Filter out incomplete addresses (containing ellipsis)
+          const validAddressStrings = countryAddresses.filter((addr: any) => {
+            if (typeof addr !== 'string') return false;
+            if (addr.includes('...') || addr.includes('more addresses')) return false;
+            if (addr.trim().length < 10) return false; // Too short to be valid
+            return true;
+          });
+          
+          console.log(`FIXED: Valid address strings for ${country}:`, validAddressStrings);
+          
+          const structuredAddresses = validAddressStrings
             .slice(0, count) // Take only the requested count
             .map((addr: string) => this.parseAddressStringEnhanced(addr, country))
             .filter(addr => this.isValidAddress(addr));
           
+          console.log(`FIXED: Structured addresses for ${country}:`, structuredAddresses);
+          
           if (structuredAddresses.length > 0) {
             addressesByCountry.set(country, structuredAddresses);
             totalGenerated += structuredAddresses.length;
+            console.log(`✅ FIXED: Successfully processed ${structuredAddresses.length} addresses for ${country}`);
+          } else {
+            console.warn(`⚠️ FIXED: No valid addresses generated for ${country}`);
           }
+        } else {
+          console.warn(`⚠️ FIXED: Invalid address data structure for ${country}`);
         }
       }
+
+      console.log(`FIXED: Final batch processing complete. Total generated: ${totalGenerated}/${totalRequested}`);
 
       return {
         addressesByCountry,
@@ -274,8 +304,49 @@ Example format:
         }
       };
     } catch (error) {
-      console.error('Error parsing batch address response:', error);
+      console.error('FIXED: Error parsing batch address response:', error);
+      console.error('FIXED: Content that failed to parse:', content);
       throw new Error('Failed to parse batch address response from Azure OpenAI');
+    }
+  }
+
+  private cleanAndExtractJSON(content: string): string | null {
+    console.log('FIXED: Starting JSON cleaning and extraction');
+    
+    // Remove markdown code blocks
+    let cleaned = content.replace(/```json\s*/g, '').replace(/```\s*$/g, '');
+    
+    // Remove leading/trailing whitespace
+    cleaned = cleaned.trim();
+    
+    // Try to find JSON object boundaries
+    const jsonStart = cleaned.indexOf('{');
+    const jsonEnd = cleaned.lastIndexOf('}');
+    
+    if (jsonStart === -1 || jsonEnd === -1 || jsonStart >= jsonEnd) {
+      console.error('FIXED: No valid JSON object boundaries found');
+      return null;
+    }
+    
+    // Extract the JSON portion
+    const jsonContent = cleaned.substring(jsonStart, jsonEnd + 1);
+    console.log('FIXED: Extracted JSON content:', jsonContent);
+    
+    // Additional cleaning for common issues
+    let finalContent = jsonContent
+      .replace(/,\s*}/g, '}')  // Remove trailing commas
+      .replace(/,\s*]/g, ']')   // Remove trailing commas in arrays
+      .replace(/\n\s*\.\.\.\s*/g, '') // Remove ellipsis on new lines
+      .replace(/"\s*\.\.\.\s*"/g, ''); // Remove ellipsis in quotes
+    
+    // Try to validate it's parseable
+    try {
+      JSON.parse(finalContent);
+      console.log('✅ FIXED: JSON content validated successfully');
+      return finalContent;
+    } catch (error) {
+      console.error('FIXED: JSON validation failed:', error);
+      return null;
     }
   }
 
@@ -405,12 +476,13 @@ Example format:
   }
 
   private parseAddressStringEnhanced(addressString: string, expectedCountry: string): GeneratedAddress {
-    console.log('Enhanced parsing address string:', addressString);
+    console.log(`FIXED: Enhanced parsing for ${expectedCountry}:`, addressString);
     
     // Split by commas and clean up parts
-    const parts = addressString.split(',').map(part => part.trim());
+    const parts = addressString.split(',').map(part => part.trim()).filter(part => part.length > 0);
+    console.log(`FIXED: Address parts for ${expectedCountry}:`, parts);
     
-    // Default structure
+    // Default structure - CRUCIAL: Use appropriate defaults for each country
     let street = '';
     let city = '';
     let state = '';
@@ -420,6 +492,7 @@ Example format:
     try {
       // Detect address format based on country and structure
       const format = this.detectAddressFormat(addressString, expectedCountry);
+      console.log(`FIXED: Detected format for ${expectedCountry}: ${format}`);
       
       switch (format) {
         case 'US_FORMAT':
@@ -477,21 +550,52 @@ Example format:
           break;
           
         case 'BRAZIL_FORMAT':
+          // FIXED: Enhanced Brazil format handling
           // Format: "Rua das Flores, 123, São Paulo, SP 01001-000, Brazil"
-          if (parts.length >= 4) {
-            street = parts.slice(0, 2).join(', '); // Include street number
-            city = parts[2];
-            const stateAndZip = parts[3].split(' ');
-            if (stateAndZip.length >= 2) {
-              state = stateAndZip[0];
-              postalCode = stateAndZip.slice(1).join(' ');
+          // OR: "123 Avenida Paulista, São Paulo SP 01310-100, Brazil"
+          console.log(`FIXED: Processing Brazil format with ${parts.length} parts:`, parts);
+          
+          if (parts.length >= 3) {
+            // Brazil addresses often combine street name and number
+            street = parts[0];
+            if (parts.length >= 4 && !parts[1].match(/\d{5}/)) {
+              // If second part doesn't look like postal code, include it in street
+              street = `${parts[0]}, ${parts[1]}`;
+              city = parts[2];
+              // Look for state and postal code in remaining parts
+              const stateAndZip = parts[3].split(' ');
+              if (stateAndZip.length >= 2) {
+                state = stateAndZip[0];
+                postalCode = stateAndZip.slice(1).join(' ');
+              } else {
+                state = ''; // FIXED: Don't use fallback for Brazil
+                postalCode = parts[3];
+              }
+            } else {
+              city = parts[1];
+              // Handle combined state and postal code
+              const stateAndZip = parts[2].split(' ');
+              if (stateAndZip.length >= 2) {
+                state = stateAndZip[0];
+                postalCode = stateAndZip.slice(1).join(' ');
+              } else {
+                state = ''; // FIXED: Don't use fallback for Brazil
+                postalCode = parts[2];
+              }
             }
-            country = parts[parts.length - 1];
+            country = expectedCountry; // Always use expected country
+          } else {
+            // FIXED: Minimal fallback for Brazil without contamination
+            street = parts[0] || addressString;
+            city = parts[1] || 'São Paulo';
+            state = ''; // FIXED: Brazil regions vary, leave empty rather than use fallback
+            postalCode = '01000-000';
+            country = expectedCountry;
           }
           break;
           
         default:
-          // Generic fallback format
+          // FIXED: Improved generic fallback with country-specific defaults
           if (parts.length >= 3) {
             street = parts[0];
             city = parts[1];
@@ -502,20 +606,22 @@ Example format:
                 state = stateAndZip[0];
                 postalCode = stateAndZip.slice(1).join(' ');
               } else {
-                state = parts[2];
+                // FIXED: Country-specific state defaults
+                state = this.getCountrySpecificStateDefault(expectedCountry);
                 postalCode = parts[3];
               }
               country = parts[parts.length - 1];
             } else {
-              state = parts[2];
+              state = this.getCountrySpecificStateDefault(expectedCountry);
               country = expectedCountry;
             }
           } else {
-            // Fallback: use the whole string as street
+            // FIXED: Last resort fallback with country-appropriate defaults
             street = addressString;
-            city = 'Test City';
-            state = 'Test State';
-            postalCode = '12345';
+            city = this.getCountrySpecificCityDefault(expectedCountry);
+            state = this.getCountrySpecificStateDefault(expectedCountry);
+            postalCode = this.getCountrySpecificPostalDefault(expectedCountry);
+            country = expectedCountry;
           }
       }
 
@@ -523,24 +629,78 @@ Example format:
       postalCode = postalCode.replace(/[^\w\s-]/g, '').trim();
       
     } catch (error) {
-      console.error('Error parsing individual address:', error);
-      // Fallback values
+      console.error(`FIXED: Error parsing address for ${expectedCountry}:`, error);
+      // FIXED: Country-specific fallback values
       street = addressString.length > 50 ? addressString.substring(0, 50) : addressString;
-      city = 'Test City';
-      state = 'Test State';
-      postalCode = '12345';
+      city = this.getCountrySpecificCityDefault(expectedCountry);
+      state = this.getCountrySpecificStateDefault(expectedCountry);
+      postalCode = this.getCountrySpecificPostalDefault(expectedCountry);
+      country = expectedCountry;
     }
 
     const result = {
-      street: street || 'Test Street',
-      city: city || 'Test City',
-      state: state || 'Test State',
-      postalCode: postalCode || '12345',
+      street: street || this.getCountrySpecificStreetDefault(expectedCountry),
+      city: city || this.getCountrySpecificCityDefault(expectedCountry),
+      state: state, // Don't fallback, some countries don't use states
+      postalCode: postalCode || this.getCountrySpecificPostalDefault(expectedCountry),
       country: expectedCountry
     };
 
-    console.log('Enhanced parsed result:', result);
+    console.log(`FIXED: Enhanced parsed result for ${expectedCountry}:`, result);
     return result;
+  }
+
+  private getCountrySpecificCityDefault(country: string): string {
+    const lowerCountry = country.toLowerCase();
+    if (lowerCountry.includes('brazil')) return 'São Paulo';
+    if (lowerCountry.includes('japan')) return 'Tokyo';
+    if (lowerCountry.includes('germany')) return 'Berlin';
+    if (lowerCountry.includes('france')) return 'Paris';
+    if (lowerCountry.includes('india')) return 'Mumbai';
+    if (lowerCountry.includes('mexico')) return 'Mexico City';
+    if (lowerCountry.includes('australia')) return 'Sydney';
+    if (lowerCountry.includes('canada')) return 'Toronto';
+    if (lowerCountry.includes('united kingdom')) return 'London';
+    return 'Test City';
+  }
+
+  private getCountrySpecificStateDefault(country: string): string {
+    const lowerCountry = country.toLowerCase();
+    if (lowerCountry.includes('brazil')) return 'SP';
+    if (lowerCountry.includes('japan')) return '';
+    if (lowerCountry.includes('germany')) return '';
+    if (lowerCountry.includes('france')) return '';
+    if (lowerCountry.includes('india')) return 'MH';
+    if (lowerCountry.includes('mexico')) return 'CDMX';
+    if (lowerCountry.includes('australia')) return 'NSW';
+    if (lowerCountry.includes('canada')) return 'ON';
+    if (lowerCountry.includes('united kingdom')) return '';
+    if (lowerCountry.includes('united states')) return 'NY';
+    return '';
+  }
+
+  private getCountrySpecificPostalDefault(country: string): string {
+    const lowerCountry = country.toLowerCase();
+    if (lowerCountry.includes('brazil')) return '01000-000';
+    if (lowerCountry.includes('japan')) return '100-0001';
+    if (lowerCountry.includes('germany')) return '10115';
+    if (lowerCountry.includes('france')) return '75001';
+    if (lowerCountry.includes('india')) return '400001';
+    if (lowerCountry.includes('mexico')) return '01000';
+    if (lowerCountry.includes('australia')) return '2000';
+    if (lowerCountry.includes('canada')) return 'M5H 2N2';
+    if (lowerCountry.includes('united kingdom')) return 'SW1A 1AA';
+    if (lowerCountry.includes('united states')) return '10001';
+    return '12345';
+  }
+
+  private getCountrySpecificStreetDefault(country: string): string {
+    const lowerCountry = country.toLowerCase();
+    if (lowerCountry.includes('brazil')) return 'Rua Principal, 123';
+    if (lowerCountry.includes('japan')) return '1-2-3 Main Street';
+    if (lowerCountry.includes('germany')) return 'Hauptstraße 123';
+    if (lowerCountry.includes('france')) return '123 Rue Principale';
+    return '123 Main Street';
   }
 
   private detectAddressFormat(addressString: string, country: string): string {
