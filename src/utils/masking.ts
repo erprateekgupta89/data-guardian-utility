@@ -1,24 +1,19 @@
+
 import { ColumnInfo, DataType } from "@/types";
 import { randomString, randomNumber, getUniqueValues, getRandomSample } from "./maskingHelpers";
 import { maskPersonalInfo, maskLocationData, maskDateTime } from "./dataTypeMasking";
 import { detectColumnDataType } from "./dataDetection";
 import { AzureOpenAIMasking, type AzureOpenAIMaskingOptions } from "./azureOpenAIMasking";
 import { PatternAnalyzer, type PatternAnalysis } from "./patternAnalysis";
-import { SemanticConstantMasking } from "./semanticConstantMasking";
 
 // Mask data based on its type and original format
 export const maskData = (value: string, dataType: DataType, format?: string, constantValues?: string[], patternAnalysis?: PatternAnalysis, index?: number): string => {
   if (!value || value.trim() === '') return value;
   
-  // PRIORITY 1: Check for constant values first - Use SEMANTIC MASKING to avoid original values
-  if (patternAnalysis?.isConstantValue && patternAnalysis.constantMetadata) {
-    console.log(`🎯 Using semantic constant masking for ${dataType}: ${patternAnalysis.constantValue} → generating semantic replacement`);
-    
-    const semanticMasking = new SemanticConstantMasking();
-    const maskedValue = semanticMasking.generateSemanticMaskedValue(patternAnalysis.constantMetadata, dataType);
-    
-    console.log(`✅ Semantic constant masked: "${patternAnalysis.constantValue}" → "${maskedValue}"`);
-    return maskedValue;
+  // PRIORITY 1: Check for constant values first - NO sequential numbering for constant data
+  if (patternAnalysis?.isConstantValue && patternAnalysis.constantValue) {
+    console.log(`Using constant value for ${dataType}: ${patternAnalysis.constantValue}`);
+    return patternAnalysis.constantValue;
   }
 
   // PRIORITY 2: If constant values are provided from unique values, use them instead of generating new values

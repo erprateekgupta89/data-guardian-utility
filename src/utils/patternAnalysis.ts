@@ -1,4 +1,3 @@
-import { SemanticConstantMasking, ConstantValueMetadata } from './semanticConstantMasking';
 
 interface PatternAnalysis {
   hasPrefix: boolean;
@@ -8,12 +7,9 @@ interface PatternAnalysis {
   sampleSize: number;
   isConstantValue: boolean;
   constantValue?: string;
-  constantMetadata?: ConstantValueMetadata; // New field for semantic metadata
 }
 
 class PatternAnalyzer {
-  private semanticMasking = new SemanticConstantMasking();
-
   analyzeColumnPattern(values: string[]): PatternAnalysis {
     const nonEmptyValues = values.filter(v => v && v.trim()).slice(0, 50); // Analyze up to 50 samples
     
@@ -30,13 +26,8 @@ class PatternAnalyzer {
 
     // Check for constant values first (PRIORITY 1)
     const constantCheck = this.detectConstantValue(nonEmptyValues);
-    if (constantCheck.isConstant && constantCheck.value) {
+    if (constantCheck.isConstant) {
       console.log(`✅ Constant value detected for column: ${constantCheck.value}`);
-      
-      // Generate semantic metadata for the constant value
-      const constantMetadata = this.semanticMasking.analyzeConstantValue(constantCheck.value);
-      console.log(`🔍 Semantic analysis:`, constantMetadata);
-      
       return {
         hasPrefix: false,
         prefix: '',
@@ -44,8 +35,7 @@ class PatternAnalyzer {
         incrementalNumbers: [],
         sampleSize: nonEmptyValues.length,
         isConstantValue: true,
-        constantValue: constantCheck.value,
-        constantMetadata // Store semantic metadata
+        constantValue: constantCheck.value
       };
     }
 
