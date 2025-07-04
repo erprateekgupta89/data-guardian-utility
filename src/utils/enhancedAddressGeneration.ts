@@ -1,3 +1,4 @@
+
 import { AzureOpenAIService, type GeneratedAddress, type BatchAddressGenerationRequest } from '@/services/azureOpenAI';
 import { GeoReferenceSystem } from './geoReference';
 import { CountryProportionCalculator, type ProportionalMaskingPlan } from './countryProportions';
@@ -122,7 +123,7 @@ class EnhancedAddressGenerator {
     data: Record<string, string>[],
     countryColumnName: string,
     selectedCountries?: string[],
-    analysis: DatasetAnalysis
+    analysis?: DatasetAnalysis
   ): CountryRequirement[] {
     console.log('=== ENHANCED: Calculating Proportional Requirements (≥100 rows) ===');
     
