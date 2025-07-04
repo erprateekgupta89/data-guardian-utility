@@ -1,3 +1,4 @@
+
 import { ColumnInfo, DataType } from "@/types";
 import { randomString, randomNumber, getUniqueValues, getRandomSample } from "./maskingHelpers";
 import { maskPersonalInfo, maskLocationData, maskDateTime } from "./dataTypeMasking";
@@ -154,13 +155,13 @@ interface MaskingOptions {
   azureOpenAIConfig?: AzureOpenAIMaskingOptions;
 }
 
-// ENHANCED: Complete masking solution with perfect country-address alignment AND nationality synchronization
+// FIXED: Complete masking solution with perfect country-address alignment AND nationality synchronization
 export const maskDataSet = async (
   data: Record<string, string>[],
   columns: ColumnInfo[],
   options?: MaskingOptions
 ): Promise<Record<string, string>[]> => {
-  console.log('=== ENHANCED: Starting Perfect Country-Address-Nationality Alignment Masking ===');
+  console.log('=== FIXED: Starting Perfect Country-Address-Nationality Alignment Masking ===');
   console.log(`Data rows: ${data.length}`);
   console.log(`Columns: ${columns.length}`);
   console.log(`Is large dataset (≥100 rows): ${data.length >= 100}`);
@@ -171,7 +172,7 @@ export const maskDataSet = async (
   // Dataset size analysis
   const isLargeDataset = data.length >= 100;
   if (isLargeDataset) {
-    console.log('🔄 ENHANCED: Large dataset detected - using enhanced address generation with uniqueness validation');
+    console.log('🔄 FIXED: Large dataset detected - using enhanced address generation with uniqueness validation');
   }
 
   // Check if both Country and Nationality columns exist
@@ -180,34 +181,47 @@ export const maskDataSet = async (
   const hasCountryAndNationality = countryColumn && nationalityColumn;
   
   if (hasCountryAndNationality) {
-    console.log('🌍 ENHANCED: Both Country and Nationality columns detected - enabling synchronized nationality derivation');
-    console.log(`🔄 ENHANCED: Country column: "${countryColumn?.name}", Nationality column: "${nationalityColumn?.name}"`);
+    console.log('🌍 FIXED: Both Country and Nationality columns detected - enabling synchronized nationality derivation');
+    console.log(`🔄 FIXED: Country column: "${countryColumn?.name}", Nationality column: "${nationalityColumn?.name}"`);
   }
 
-  // CRITICAL FIX: Ensure Country column is processed before Nationality column
-  if (hasCountryAndNationality) {
-    const sortedColumns = [...columns];
-    
-    // Find indices
-    const countryIndex = sortedColumns.findIndex(col => col.name.toLowerCase() === 'country');
-    const nationalityIndex = sortedColumns.findIndex(col => col.name.toLowerCase() === 'nationality' || col.dataType === 'Nationality');
-    
-    // If nationality comes before country, swap them
-    if (nationalityIndex < countryIndex) {
-      console.log('⚠️ ENHANCED: Nationality column comes before Country column - reordering for synchronization');
-      const nationalityCol = sortedColumns[nationalityIndex];
-      const countryCol = sortedColumns[countryIndex];
-      
-      // Swap positions
-      sortedColumns[nationalityIndex] = countryCol;
-      sortedColumns[countryIndex] = nationalityCol;
-      
-      console.log('✅ ENHANCED: Column order fixed - Country will be processed before Nationality');
-    }
-    
-    // Update columns array with proper order
-    columns.splice(0, columns.length, ...sortedColumns);
-  }
+  // CRITICAL FIX: Ensure proper column processing order for perfect alignment
+  const sortedColumns = [...columns];
+  
+  // Find all geo-related columns
+  const geoColumns = sortedColumns.filter(col => 
+    ['Address', 'City', 'State', 'Country', 'Postal Code'].includes(col.dataType) ||
+    col.name.toLowerCase() === 'country' ||
+    col.name.toLowerCase() === 'nationality' ||
+    col.dataType === 'Nationality'
+  );
+  
+  // Find non-geo columns
+  const nonGeoColumns = sortedColumns.filter(col => !geoColumns.includes(col));
+  
+  // Sort geo columns in the correct order: Country → Address → City → State → Postal Code → Nationality
+  const geoColumnOrder = ['country', 'address', 'city', 'state', 'postal code', 'nationality'];
+  const orderedGeoColumns = geoColumns.sort((a, b) => {
+    const aOrder = geoColumnOrder.findIndex(type => 
+      a.name.toLowerCase().includes(type) || 
+      a.dataType.toLowerCase().includes(type) ||
+      (type === 'nationality' && a.dataType === 'Nationality')
+    );
+    const bOrder = geoColumnOrder.findIndex(type => 
+      b.name.toLowerCase().includes(type) || 
+      b.dataType.toLowerCase().includes(type) ||
+      (type === 'nationality' && b.dataType === 'Nationality')
+    );
+    return aOrder - bOrder;
+  });
+  
+  // Reassemble columns with proper order
+  columns.splice(0, columns.length, ...nonGeoColumns, ...orderedGeoColumns);
+  
+  console.log('✅ FIXED: Column processing order optimized for perfect geo-alignment:');
+  columns.forEach((col, idx) => {
+    console.log(`  ${idx + 1}. ${col.name} (${col.dataType})`);
+  });
 
   // Re-infer and correct column data types
   columns.forEach(col => {
@@ -251,10 +265,10 @@ export const maskDataSet = async (
     }
   });
 
-  // ENHANCED: Initialize Enhanced Azure OpenAI masking with perfect alignment
+  // FIXED: Initialize Enhanced Azure OpenAI masking with perfect alignment
   let azureOpenAIMasking: AzureOpenAIMasking | null = null;
   if (options?.useAzureOpenAI && options?.azureOpenAIConfig) {
-    console.log('=== ENHANCED: Initializing Perfect Country-Address Alignment System ===');
+    console.log('=== FIXED: Initializing Perfect Country-Address Alignment System ===');
     azureOpenAIMasking = new AzureOpenAIMasking({
       ...options.azureOpenAIConfig,
       preserveDataStructure: true,
@@ -263,22 +277,22 @@ export const maskDataSet = async (
       selectedCountries: options.selectedCountries
     });
     
-    console.log(`ENHANCED: Country column found: ${countryColumn?.name || 'None'}`);
+    console.log(`FIXED: Country column found: ${countryColumn?.name || 'None'}`);
     
     // Log Country Selection Logic Decision
     if (options.useCountryDropdown && options.selectedCountries?.length) {
-      console.log('=== ENHANCED: Perfect Country Selection Mode Active ===');
-      console.log('ENHANCED: Will ensure perfect alignment between selected countries and addresses');
+      console.log('=== FIXED: Perfect Country Selection Mode Active ===');
+      console.log('FIXED: Will ensure perfect alignment between selected countries and addresses');
     } else if (countryColumn?.name) {
-      console.log('=== ENHANCED: Perfect Geo-Column Mode Active ==='); 
-      console.log('ENHANCED: Will ensure perfect alignment between geo-column values and addresses');
+      console.log('=== FIXED: Perfect Geo-Column Mode Active ==='); 
+      console.log('FIXED: Will ensure perfect alignment between geo-column values and addresses');
     } else {
-      console.log('=== ENHANCED: Perfect Default Mode Active ===');
-      console.log('ENHANCED: Will use perfect default country-address alignment');
+      console.log('=== FIXED: Perfect Default Mode Active ===');
+      console.log('FIXED: Will use perfect default country-address alignment');
     }
     
     // Initialize the enhanced system with dataset analysis and original data comparison
-    console.log('ENHANCED: Initializing system with uniqueness validation and original data comparison...');
+    console.log('FIXED: Initializing system with uniqueness validation and original data comparison...');
     await azureOpenAIMasking.initializeForDataset(
       workingData,
       columns,
@@ -288,16 +302,16 @@ export const maskDataSet = async (
     // Log dataset analysis results
     const analysis = azureOpenAIMasking.getDatasetAnalysis();
     if (analysis) {
-      console.log('✅ ENHANCED: Perfect alignment system initialized:', analysis);
+      console.log('✅ FIXED: Perfect alignment system initialized:', analysis);
     }
     
-    console.log('✅ ENHANCED: Perfect country-address alignment system ready');
+    console.log('✅ FIXED: Perfect country-address alignment system ready');
   }
   
-  console.log('=== ENHANCED: Starting perfect row-by-row masking with nationality synchronization ===');
+  console.log('=== FIXED: Starting perfect row-by-row masking with nationality synchronization ===');
   return Promise.all(workingData.map(async (row, index) => {
     if (index % 50 === 0) {
-      console.log(`ENHANCED: Processing row ${index + 1}/${workingData.length} with perfect alignment and nationality sync`);
+      console.log(`FIXED: Processing row ${index + 1}/${workingData.length} with perfect alignment and nationality sync`);
     }
 
     const maskedRow: Record<string, string> = {};
@@ -305,48 +319,43 @@ export const maskDataSet = async (
     for (const column of columns) {
       if (column.skip) {
         maskedRow[column.name] = row[column.name];
-      } else if (column.name.toLowerCase() === 'country' && !options?.useCountryDropdown) {
-        // Country column without dropdown - use original logic
-        maskedRow[column.name] = maskData(
-          row[column.name], 
-          column.dataType,
-          row[column.name], 
-          columnUniqueValues[column.name],
-          columnPatterns[column.name],
-          index
-        );
-        console.log(`🌍 ENHANCED: Row ${index} - Country masked: ${row[column.name]} → ${maskedRow[column.name]}`);
-      } else if (column.name.toLowerCase() === 'country' && options?.useCountryDropdown && options?.selectedCountries?.length) {
-        // ENHANCED: Country column with dropdown - perfect rotation
-        const countryIndex = index % options.selectedCountries.length;
-        maskedRow[column.name] = options.selectedCountries[countryIndex];
-        console.log(`🎯 ENHANCED: Row ${index} - Perfect country assignment: ${maskedRow[column.name]}`);
+      } else if (column.name.toLowerCase() === 'country') {
+        // FIXED: Country column processing with dropdown priority
+        if (options?.useCountryDropdown && options?.selectedCountries?.length) {
+          // Use dropdown selection with perfect rotation
+          const countryIndex = index % options.selectedCountries.length;
+          maskedRow[column.name] = options.selectedCountries[countryIndex];
+          console.log(`🎯 FIXED: Row ${index} - Dropdown country assignment: ${maskedRow[column.name]}`);
+        } else {
+          // Use original masking logic for country column
+          maskedRow[column.name] = maskData(
+            row[column.name], 
+            column.dataType,
+            row[column.name], 
+            columnUniqueValues[column.name],
+            columnPatterns[column.name],
+            index
+          );
+          console.log(`🌍 FIXED: Row ${index} - Country masked: ${row[column.name]} → ${maskedRow[column.name]}`);
+        }
       } else if (hasCountryAndNationality && (column.name.toLowerCase() === 'nationality' || column.dataType === 'Nationality')) {
         // CRITICAL FIX: Use the ALREADY MASKED country value from the same row
         let maskedCountryValue = '';
         
-        if (options?.useCountryDropdown && options?.selectedCountries?.length) {
-          // Use the country from dropdown selection (same logic as country column)
-          const countryIndex = index % options.selectedCountries.length;
-          maskedCountryValue = options.selectedCountries[countryIndex];
-        } else if (countryColumn && maskedRow[countryColumn.name]) {
+        if (countryColumn && maskedRow[countryColumn.name]) {
           // CRITICAL: Use the already-masked country value from maskedRow, not original row
           maskedCountryValue = maskedRow[countryColumn.name];
         }
         
-        console.log(`🔄 ENHANCED: Row ${index} - Nationality derivation input:`, {
-          originalCountry: row[countryColumn?.name || ''] || 'N/A',
-          maskedCountry: maskedCountryValue || 'N/A',
-          usingDropdown: options?.useCountryDropdown || false
-        });
+        console.log(`🔄 FIXED: Row ${index} - Nationality derivation from MASKED country: ${maskedCountryValue}`);
         
         if (maskedCountryValue && azureOpenAIMasking) {
-          console.log(`🌍 ENHANCED: Row ${index} - Deriving nationality from MASKED country: ${maskedCountryValue}`);
+          console.log(`🌍 FIXED: Row ${index} - Deriving nationality from MASKED country: ${maskedCountryValue}`);
           maskedRow[column.name] = azureOpenAIMasking.deriveNationality(maskedCountryValue);
-          console.log(`✅ ENHANCED: Row ${index} - Synchronized result: Country="${maskedCountryValue}" → Nationality="${maskedRow[column.name]}"`);
+          console.log(`✅ FIXED: Row ${index} - Synchronized result: Country="${maskedCountryValue}" → Nationality="${maskedRow[column.name]}"`);
         } else {
           // Fallback to regular masking
-          console.log(`⚠️ ENHANCED: Row ${index} - Fallback to regular nationality masking (no masked country available)`);
+          console.log(`⚠️ FIXED: Row ${index} - Fallback to regular nationality masking (no masked country available)`);
           maskedRow[column.name] = maskData(
             row[column.name], 
             column.dataType,
@@ -357,20 +366,20 @@ export const maskDataSet = async (
           );
         }
       } else if (azureOpenAIMasking && ['Address', 'City', 'State', 'Postal Code'].includes(column.dataType)) {
-        // ENHANCED: Use Perfect Country-Address Alignment System
+        // FIXED: Use Perfect Country-Address Alignment System with masked country
         try {
           let targetCountry = options?.selectedCountries?.[0] || 'United States';
           
-          if (countryColumn && !options?.useCountryDropdown) {
-            // ENHANCED: Use masked country value if available, otherwise original
-            targetCountry = maskedRow[countryColumn.name] || row[countryColumn.name];
-          } else if (options?.useCountryDropdown && options?.selectedCountries?.length) {
+          if (options?.useCountryDropdown && options?.selectedCountries?.length) {
             // Use dropdown rotation for consistency
             const countryIndex = index % options.selectedCountries.length;
             targetCountry = options.selectedCountries[countryIndex];
+          } else if (countryColumn && maskedRow[countryColumn.name]) {
+            // CRITICAL FIX: Use the ALREADY MASKED country value
+            targetCountry = maskedRow[countryColumn.name];
           }
           
-          console.log(`🎯 ENHANCED: Row ${index} - Using perfect alignment for ${column.dataType} (target: ${targetCountry})`);
+          console.log(`🎯 FIXED: Row ${index} - Using perfect alignment for ${column.dataType} (target: ${targetCountry})`);
           
           // Pass row index for perfect address alignment (CRITICAL)
           maskedRow[column.name] = await azureOpenAIMasking.maskData(
@@ -380,7 +389,7 @@ export const maskDataSet = async (
             index // CRITICAL: Pass row index for perfect alignment
           );
         } catch (error) {
-          console.error(`❌ ENHANCED: Perfect alignment failed for ${column.name} at row ${index}:`, error);
+          console.error(`❌ FIXED: Perfect alignment failed for ${column.name} at row ${index}:`, error);
           // Fallback to regular masking (no API calls)
           maskedRow[column.name] = maskData(
             row[column.name], 

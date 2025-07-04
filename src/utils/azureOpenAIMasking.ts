@@ -18,11 +18,11 @@ interface AzureOpenAIMaskingOptions {
   enableNationalityDerivation?: boolean;
 }
 
-// PLAN: Enhanced row context for perfect country-address alignment
+// FIXED: Enhanced row context for perfect country-address alignment
 interface RowContext {
   index: number;
   country: string;
-  nationality: string; // PLAN: Add nationality tracking
+  nationality: string; // FIXED: Add nationality tracking
   addressComponents: Map<string, string>;
 }
 
@@ -35,7 +35,7 @@ class AzureOpenAIMasking {
   private addressValidator: AddressValidator;
   private countryAddressMap: Map<string, GeneratedAddress[]> = new Map();
   private countryIndexMap: Map<string, number> = new Map();
-  private rowContextMap: Map<number, RowContext> = new Map(); // PLAN: Track row contexts with nationality
+  private rowContextMap: Map<number, RowContext> = new Map(); // FIXED: Track row contexts with nationality
   private nationalityCache: Map<string, NationalityDerivationResult> = new Map();
   private preservationRules: PreservationRule[] = [];
   private geoMapping: GeoColumnMapping = {};
@@ -43,7 +43,7 @@ class AzureOpenAIMasking {
   private datasetAnalysis: DatasetAnalysis | null = null;
 
   constructor(options: AzureOpenAIMaskingOptions) {
-    console.log('=== PLAN: Initializing AzureOpenAIMasking with Perfect Country-Address-Nationality Alignment ===');
+    console.log('=== FIXED: Initializing AzureOpenAIMasking with Perfect Country-Address-Nationality Alignment ===');
     
     this.options = {
       batchSize: 50,
@@ -55,9 +55,9 @@ class AzureOpenAIMasking {
       ...options
     };
     
-    console.log(`PLAN: Country dropdown enabled: ${this.options.useCountryDropdown}`);
-    console.log(`PLAN: Selected countries: ${this.options.selectedCountries?.join(', ') || 'None'}`);
-    console.log(`PLAN: Nationality derivation enabled: ${this.options.enableNationalityDerivation}`);
+    console.log(`FIXED: Country dropdown enabled: ${this.options.useCountryDropdown}`);
+    console.log(`FIXED: Selected countries: ${this.options.selectedCountries?.join(', ') || 'None'}`);
+    console.log(`FIXED: Nationality derivation enabled: ${this.options.enableNationalityDerivation}`);
     
     this.service = new AzureOpenAIService(options.config);
     this.addressValidator = new AddressValidator();
@@ -80,7 +80,7 @@ class AzureOpenAIMasking {
     columns: any[],
     countryColumnName?: string
   ): Promise<void> {
-    console.log('=== PLAN: Dataset Initialization with Perfect Country-Address-Nationality Alignment ===');
+    console.log('=== FIXED: Dataset Initialization with Perfect Country-Address-Nationality Alignment ===');
     
     // Initialize original data comparison
     this.addressValidator.initializeOriginalData(data);
@@ -96,20 +96,20 @@ class AzureOpenAIMasking {
       maxAddressesPerCountry: data.length >= 100 ? 100 : data.length
     };
 
-    console.log('PLAN: Dataset Analysis:', this.datasetAnalysis);
+    console.log('FIXED: Dataset Analysis:', this.datasetAnalysis);
     
-    // PLAN: Pre-calculate row contexts for perfect country-address-nationality alignment
+    // FIXED: Pre-calculate row contexts for perfect country-address-nationality alignment
     await this.preCalculateRowContexts(data, countryColumnName);
     
     // Handle Country Selection Toggle Logic
     if (this.options.useCountryDropdown && this.options.selectedCountries?.length) {
-      console.log('=== PLAN: Country Selection Mode Enabled ===');
-      console.log(`PLAN: Using selected countries: ${this.options.selectedCountries.join(', ')}`);
-      console.log('PLAN: Will ignore original country column values');
+      console.log('=== FIXED: Country Selection Mode Enabled ===');
+      console.log(`FIXED: Using selected countries: ${this.options.selectedCountries.join(', ')}`);
+      console.log('FIXED: Will ignore original country column values');
     } else if (countryColumnName) {
-      console.log('=== PLAN: Geo-Column Mode Enabled ===');
-      console.log(`PLAN: Using country column: ${countryColumnName}`);
-      console.log('PLAN: Will use original country values from dataset');
+      console.log('=== FIXED: Geo-Column Mode Enabled ===');
+      console.log(`FIXED: Using country column: ${countryColumnName}`);
+      console.log('FIXED: Will use original country values from dataset');
     }
     
     // Detect geo columns
@@ -132,52 +132,55 @@ class AzureOpenAIMasking {
     // Generate addresses using enhanced system with proper country logic
     await this.preGenerateAddresses(data, countryColumnName);
 
-    console.log('PLAN: Initialization complete with perfect country-address-nationality alignment');
+    console.log('FIXED: Initialization complete with perfect country-address-nationality alignment');
   }
 
-  // PLAN: Pre-calculate row contexts for perfect country-address-nationality alignment
+  // FIXED: Pre-calculate row contexts for perfect country-address-nationality alignment
   private async preCalculateRowContexts(
     data: Record<string, string>[],
     countryColumnName?: string
   ): Promise<void> {
-    console.log('=== PLAN: Pre-calculating row contexts for perfect country-address-nationality alignment ===');
+    console.log('=== FIXED: Pre-calculating row contexts for perfect country-address-nationality alignment ===');
     
     this.rowContextMap.clear();
     
     data.forEach((row, index) => {
       let targetCountry: string;
       
-      // PLAN: Correct country assignment logic
+      // FIXED: Correct country assignment logic with dropdown priority
       if (this.options.useCountryDropdown && this.options.selectedCountries?.length) {
-        // Use selected countries in rotation
+        // CRITICAL FIX: Use selected countries in rotation (dropdown takes priority)
         const countryIndex = index % this.options.selectedCountries.length;
         targetCountry = this.options.selectedCountries[countryIndex];
+        console.log(`🎯 FIXED: Row ${index} - Dropdown priority: ${targetCountry}`);
       } else if (countryColumnName && row[countryColumnName]) {
         // Use original country column value
         targetCountry = row[countryColumnName].trim();
+        console.log(`🌍 FIXED: Row ${index} - Geo-column: ${targetCountry}`);
       } else {
         // Default fallback
         targetCountry = this.options.country || 'United States';
+        console.log(`⚠️ FIXED: Row ${index} - Default fallback: ${targetCountry}`);
       }
       
-      // PLAN: Derive nationality synchronously for this country
+      // FIXED: Derive nationality synchronously for this country
       const nationalityResult = this.nationalityEngine.deriveNationality(targetCountry);
       
       const context: RowContext = {
         index,
         country: targetCountry,
-        nationality: nationalityResult.nationality, // PLAN: Store derived nationality
+        nationality: nationalityResult.nationality, // FIXED: Store derived nationality
         addressComponents: new Map()
       };
       
       this.rowContextMap.set(index, context);
       
       if (index < 10) { // Log first 10 for verification
-        console.log(`🎯 PLAN: Row ${index} → Country: ${targetCountry} → Nationality: ${nationalityResult.nationality}`);
+        console.log(`🎯 FIXED: Row ${index} → Country: ${targetCountry} → Nationality: ${nationalityResult.nationality}`);
       }
     });
     
-    console.log(`✅ PLAN: Pre-calculated contexts for ${this.rowContextMap.size} rows with synchronized nationality`);
+    console.log(`✅ FIXED: Pre-calculated contexts for ${this.rowContextMap.size} rows with synchronized nationality`);
   }
 
   private async preCalculateNationalities(
@@ -212,35 +215,35 @@ class AzureOpenAIMasking {
     countryColumnName?: string
   ): Promise<void> {
     try {
-      console.log('=== PLAN: Pre-generating addresses with Perfect Alignment ===');
+      console.log('=== FIXED: Pre-generating addresses with Perfect Alignment ===');
       
-      // Handle different country selection scenarios
+      // FIXED: Handle different country selection scenarios with dropdown priority
       if (this.options.useCountryDropdown && this.options.selectedCountries?.length) {
-        console.log('PLAN: SCENARIO 1 - Country Selection Mode');
+        console.log('FIXED: SCENARIO 1 - Country Selection Mode (Dropdown Priority)');
         await this.generateForSelectedCountries(data);
         
       } else if (countryColumnName && !this.options.useCountryDropdown) {
-        console.log('PLAN: SCENARIO 2 - Geo-Column Mode');
+        console.log('FIXED: SCENARIO 2 - Geo-Column Mode');
         await this.generateForGeoColumn(data, countryColumnName);
         
       } else {
-        console.log('PLAN: SCENARIO 3 - Default Mode');
+        console.log('FIXED: SCENARIO 3 - Default Mode');
         await this.generateForDefaultCountries(data);
       }
       
-      console.log(`✅ PLAN: Pre-generated addresses for ${this.countryAddressMap.size} countries`);
+      console.log(`✅ FIXED: Pre-generated addresses for ${this.countryAddressMap.size} countries`);
       for (const [country, addresses] of this.countryAddressMap.entries()) {
-        console.log(`- PLAN: ${country}: ${addresses.length} unique addresses ready`);
+        console.log(`- FIXED: ${country}: ${addresses.length} unique addresses ready`);
       }
       
     } catch (error) {
-      console.error('❌ PLAN: Pre-generation failed:', error);
+      console.error('❌ FIXED: Pre-generation failed:', error);
       this.countryAddressMap = new Map();
     }
   }
 
   private async generateForSelectedCountries(data: Record<string, string>[]): Promise<void> {
-    console.log('PLAN: Generating for selected countries (ignoring geo-column)');
+    console.log('FIXED: Generating for selected countries (dropdown priority - ignoring geo-column)');
     
     const countries = this.options.selectedCountries!;
     const totalRows = data.length;
@@ -250,7 +253,7 @@ class AzureOpenAIMasking {
       ? Math.min(100, Math.ceil(totalRows / countries.length))
       : Math.ceil(totalRows / countries.length);
     
-    console.log(`PLAN: Large dataset mode - generating ${addressesPerCountry} addresses per country`);
+    console.log(`FIXED: Large dataset mode - generating ${addressesPerCountry} addresses per country`);
     
     const batchResponse = await this.enhancedGenerator['generateWithValidationAndRetry']([
       ...countries.map(country => ({
@@ -316,16 +319,16 @@ class AzureOpenAIMasking {
     }
   }
 
-  // PLAN: Perfect country-address-nationality alignment using row context
+  // FIXED: Perfect country-address-nationality alignment using row context
   async maskData(value: string, dataType: DataType, targetCountry?: string, rowIndex?: number): Promise<string> {
     if (!value || value.trim() === '') return value;
 
-    // PLAN: Enhanced nationality derivation using row context
+    // FIXED: Enhanced nationality derivation using row context
     if (dataType === 'Nationality' || (dataType === 'String' && value.toLowerCase().includes('nationality'))) {
       if (typeof rowIndex === 'number') {
         const context = this.rowContextMap.get(rowIndex);
         if (context) {
-          console.log(`🎯 PLAN: Row ${rowIndex} - Using pre-calculated nationality: ${context.nationality}`);
+          console.log(`🎯 FIXED: Row ${rowIndex} - Using pre-calculated nationality: ${context.nationality}`);
           return context.nationality;
         }
       }
@@ -333,7 +336,7 @@ class AzureOpenAIMasking {
       return this.deriveNationality(targetCountry || 'Unknown');
     }
 
-    // PLAN: Use row context for perfect alignment with enhanced debugging
+    // FIXED: Use row context for perfect alignment with enhanced debugging
     let country: string;
     let addressContext: RowContext | undefined;
     
@@ -341,62 +344,62 @@ class AzureOpenAIMasking {
       addressContext = this.rowContextMap.get(rowIndex);
       if (addressContext) {
         country = addressContext.country;
-        console.log(`🎯 PLAN: Row ${rowIndex} - Using pre-calculated country: ${country} (nationality: ${addressContext.nationality})`);
+        console.log(`🎯 FIXED: Row ${rowIndex} - Using pre-calculated country: ${country} (nationality: ${addressContext.nationality})`);
       } else {
-        // PLAN: Improved fallback logic with debugging
+        // FIXED: Improved fallback logic with debugging
         if (this.options.useCountryDropdown && this.options.selectedCountries?.length) {
           const countryIndex = rowIndex % this.options.selectedCountries.length;
           country = this.options.selectedCountries[countryIndex];
-          console.log(`⚠️ PLAN: Row ${rowIndex} - Using dropdown fallback country: ${country}`);
+          console.log(`⚠️ FIXED: Row ${rowIndex} - Using dropdown fallback country: ${country}`);
         } else {
           country = targetCountry || this.options.country || 'United States';
-          console.log(`⚠️ PLAN: Row ${rowIndex} - Using target fallback country: ${country}`);
+          console.log(`⚠️ FIXED: Row ${rowIndex} - Using target fallback country: ${country}`);
         }
       }
     } else {
       country = targetCountry || this.options.country || 'United States';
-      console.log(`PLAN: No row index - using target country: ${country}`);
+      console.log(`FIXED: No row index - using target country: ${country}`);
     }
     
     // Check if country exists in pre-generated addresses
     if (!this.countryAddressMap.has(country)) {
-      console.error(`❌ PLAN: Country "${country}" not found in pre-generated addresses!`);
+      console.error(`❌ FIXED: Country "${country}" not found in pre-generated addresses!`);
       console.log('Available countries:', Array.from(this.countryAddressMap.keys()));
       return value;
     }
 
     const addresses = this.countryAddressMap.get(country)!;
     if (addresses.length === 0) {
-      console.error(`❌ PLAN: No addresses available for country "${country}"`);
+      console.error(`❌ FIXED: No addresses available for country "${country}"`);
       return value;
     }
 
     let address: GeneratedAddress;
     
-    // PLAN: Enhanced address selection with consistent row context caching
+    // FIXED: Enhanced address selection with consistent row context caching
     if (addressContext && addressContext.addressComponents.has('_selectedAddress')) {
       // Use cached address for this row to ensure all components align
       const cachedAddressIndex = parseInt(addressContext.addressComponents.get('_selectedAddress')!);
       address = addresses[cachedAddressIndex % addresses.length];
-      console.log(`🎯 PLAN: Row ${rowIndex} - Using cached address index ${cachedAddressIndex} for ${country}`);
+      console.log(`🎯 FIXED: Row ${rowIndex} - Using cached address index ${cachedAddressIndex} for ${country}`);
     } else {
       // Select new address and cache it
       if (this.datasetAnalysis?.isLargeDataset && typeof rowIndex === 'number') {
         const reuseAddress = this.enhancedGenerator.getAddressForRow(country, rowIndex, true);
         address = reuseAddress || addresses[rowIndex % addresses.length];
-        console.log(`PLAN: Large dataset - using address reuse with incremental generation for row ${rowIndex}`);
+        console.log(`FIXED: Large dataset - using address reuse with incremental generation for row ${rowIndex}`);
       } else {
         let currentIndex = this.countryIndexMap.get(country) || 0;
         address = addresses[currentIndex % addresses.length];
         this.countryIndexMap.set(country, currentIndex + 1);
-        console.log(`PLAN: Small dataset - using sequential access (index: ${currentIndex})`);
+        console.log(`FIXED: Small dataset - using sequential access (index: ${currentIndex})`);
       }
       
       // Cache the selected address index for this row
       if (addressContext) {
         const selectedIndex = typeof rowIndex === 'number' ? rowIndex % addresses.length : 0;
         addressContext.addressComponents.set('_selectedAddress', selectedIndex.toString());
-        console.log(`🎯 PLAN: Cached address index ${selectedIndex} for row ${rowIndex}`);
+        console.log(`🎯 FIXED: Cached address index ${selectedIndex} for row ${rowIndex}`);
       }
     }
 
@@ -432,7 +435,7 @@ class AzureOpenAIMasking {
       }
     }
 
-    console.log(`✅ PLAN: Row ${rowIndex} - ${dataType} masked as "${maskedValue}" (${country})`);
+    console.log(`✅ FIXED: Row ${rowIndex} - ${dataType} masked as "${maskedValue}" (${country})`);
     return maskedValue;
   }
 
@@ -444,7 +447,7 @@ class AzureOpenAIMasking {
     // Check cache first
     const cached = this.nationalityCache.get(countryValue);
     if (cached) {
-      console.log(`🎯 PLAN: Using cached nationality - ${countryValue} → ${cached.nationality}`);
+      console.log(`🎯 FIXED: Using cached nationality - ${countryValue} → ${cached.nationality}`);
       return cached.nationality;
     }
 
@@ -454,7 +457,7 @@ class AzureOpenAIMasking {
     // Cache the result
     this.nationalityCache.set(countryValue, derivationResult);
     
-    console.log(`🌍 PLAN: Derived nationality - ${countryValue} → ${derivationResult.nationality} (confidence: ${derivationResult.confidence})`);
+    console.log(`🌍 FIXED: Derived nationality - ${countryValue} → ${derivationResult.nationality} (confidence: ${derivationResult.confidence})`);
     
     return derivationResult.nationality;
   }
