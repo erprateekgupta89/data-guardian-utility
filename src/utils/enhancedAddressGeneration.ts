@@ -97,7 +97,7 @@ class EnhancedAddressGenerator {
     
     // STEP 2: Calculate requirements with proper size limits
     const countryRequirements = datasetAnalysis.isLargeDataset
-      ? this.calculateLargeDatasetRequirements(data, countryColumnName, selectedCountries, datasetAnalysis)
+      ? this.calculateLargeDatasetRequirements(data, countryColumnName, datasetAnalysis, selectedCountries)
       : this.calculateExactCountryRequirements(data, countryColumnName, selectedCountries);
 
     console.log('=== FIXED: Country Requirements ===');
@@ -122,12 +122,11 @@ class EnhancedAddressGenerator {
     return countryAddressMap;
   }
 
-  // NEW: Separate method for large dataset requirements calculation
   private calculateLargeDatasetRequirements(
     data: Record<string, string>[],
     countryColumnName: string,
-    selectedCountries?: string[],
-    analysis: DatasetAnalysis
+    analysis: DatasetAnalysis,
+    selectedCountries?: string[]
   ): CountryRequirement[] {
     console.log('=== FIXED: Calculating Large Dataset Requirements (≥100 rows) ===');
     console.log(`FIXED: Capping addresses per country at ${analysis.maxAddressesPerCountry}`);
@@ -209,7 +208,6 @@ class EnhancedAddressGenerator {
     return requirements;
   }
 
-  // NEW: Generate addresses with validation and retry logic
   private async generateWithValidationAndRetry(
     countryRequirements: CountryRequirement[]
   ): Promise<Map<string, GeneratedAddress[]>> {
