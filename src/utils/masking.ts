@@ -1,3 +1,4 @@
+
 import { ColumnInfo, DataType } from "@/types";
 import { randomString, randomNumber, getUniqueValues, getRandomSample } from "./maskingHelpers";
 import { maskPersonalInfo, maskLocationData, maskDateTime } from "./dataTypeMasking";
@@ -174,6 +175,15 @@ export const maskDataSet = async (
     console.log('🔄 ENHANCED: Large dataset detected - using enhanced address generation with uniqueness validation');
   }
 
+  // Check if both Country and Nationality columns exist
+  const countryColumn = columns.find(col => col.name.toLowerCase() === 'country');
+  const nationalityColumn = columns.find(col => col.name.toLowerCase() === 'nationality' || col.dataType === 'Nationality');
+  const hasCountryAndNationality = countryColumn && nationalityColumn;
+  
+  if (hasCountryAndNationality) {
+    console.log('🌍 ENHANCED: Both Country and Nationality columns detected - enabling nationality derivation');
+  }
+
   // Re-infer and correct column data types
   columns.forEach(col => {
     if (
@@ -228,8 +238,6 @@ export const maskDataSet = async (
       selectedCountries: options.selectedCountries
     });
     
-    // Find country column for proportional masking
-    const countryColumn = columns.find(col => col.name.toLowerCase() === 'country');
     console.log(`ENHANCED: Country column found: ${countryColumn?.name || 'None'}`);
     
     // Log Country Selection Logic Decision
@@ -287,12 +295,38 @@ export const maskDataSet = async (
         const countryIndex = index % options.selectedCountries.length;
         maskedRow[column.name] = options.selectedCountries[countryIndex];
         console.log(`🎯 ENHANCED: Row ${index} - Perfect country assignment: ${maskedRow[column.name]}`);
+      } else if (hasCountryAndNationality && (column.name.toLowerCase() === 'nationality' || column.dataType === 'Nationality')) {
+        // ENHANCED: Derive nationality from country value in the same row
+        let countryValue = '';
+        
+        if (options?.useCountryDropdown && options?.selectedCountries?.length) {
+          // Use the country from dropdown selection
+          const countryIndex = index % options.selectedCountries.length;
+          countryValue = options.selectedCountries[countryIndex];
+        } else if (countryColumn) {
+          // Use the country value from the same row
+          countryValue = row[countryColumn.name] || '';
+        }
+        
+        if (countryValue && azureOpenAIMasking) {
+          console.log(`🌍 ENHANCED: Row ${index} - Deriving nationality from country: ${countryValue}`);
+          maskedRow[column.name] = azureOpenAIMasking.deriveNationality(countryValue);
+        } else {
+          // Fallback to regular masking
+          maskedRow[column.name] = maskData(
+            row[column.name], 
+            column.dataType,
+            row[column.name],
+            columnUniqueValues[column.name],
+            columnPatterns[column.name],
+            index
+          );
+        }
       } else if (azureOpenAIMasking && ['Address', 'City', 'State', 'Postal Code'].includes(column.dataType)) {
         // ENHANCED: Use Perfect Country-Address Alignment System
         try {
           let targetCountry = options?.selectedCountries?.[0] || 'United States';
           
-          const countryColumn = columns.find(col => col.name.toLowerCase() === 'country');
           if (countryColumn && !options?.useCountryDropdown) {
             targetCountry = row[countryColumn.name];
           }
