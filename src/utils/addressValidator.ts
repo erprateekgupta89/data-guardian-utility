@@ -17,27 +17,41 @@ interface ValidationStats {
   valid: number;
   invalid: number;
   retries: number;
+  duplicatesDetected: number;
+  originalDataMatches: number;
 }
 
-// NEW: Smart retry interfaces
+// Enhanced uniqueness and original data tracking
+interface UniquenessTracker {
+  globalAddressSet: Set<string>;
+  countryAddressSets: Map<string, Set<string>>;
+  originalDataSet: Set<string>;
+}
+
+// Enhanced smart retry interfaces
 interface SmartRetryResult {
   validAddresses: GeneratedAddress[];
   invalidAddresses: GeneratedAddress[];
-  retryRequests: Array<{ country: string; count: number; failedIndices: number[] }>;
+  retryRequests: Array<{ country: string; count: number; failedIndices: number[]; reason: string }>;
   qualityStats: Record<string, number>;
   successRate: number;
+  uniquenessStats: { duplicates: number; originalMatches: number };
 }
 
 interface RetryTracker {
   countryRetryAttempts: Map<string, number>;
   maxRetryAttempts: number;
   failedAddressIndices: Map<string, number[]>;
+  retryReasons: Map<string, string[]>;
 }
 
 class AddressValidator {
   private reuseTracker: AddressReuseTracker;
-  private validationStats: ValidationStats = { total: 0, valid: 0, invalid: 0, retries: 0 };
-  private retryTracker: RetryTracker; // NEW: Smart retry tracking
+  private validationStats: ValidationStats = { 
+    total: 0, valid: 0, invalid: 0, retries: 0, duplicatesDetected: 0, originalDataMatches: 0 
+  };
+  private retryTracker: RetryTracker;
+  private uniquenessTracker: UniquenessTracker;
 
   constructor(maxReuses: number = 3) {
     this.reuseTracker = {
@@ -46,15 +60,46 @@ class AddressValidator {
       maxReuses
     };
 
-    // NEW: Initialize smart retry tracker
     this.retryTracker = {
       countryRetryAttempts: new Map(),
       maxRetryAttempts: 3,
-      failedAddressIndices: new Map()
+      failedAddressIndices: new Map(),
+      retryReasons: new Map()
+    };
+
+    this.uniquenessTracker = {
+      globalAddressSet: new Set(),
+      countryAddressSets: new Map(),
+      originalDataSet: new Set()
     };
   }
 
-  validateAddress(address: GeneratedAddress): AddressValidationResult {
+  // NEW: Initialize original data for comparison
+  initializeOriginalData(originalData: Record<string, string>[]): void {
+    console.log('=== UNIQUENESS: Initializing original data for comparison ===');
+    
+    this.uniquenessTracker.originalDataSet.clear();
+    
+    originalData.forEach(row => {
+      // Create composite keys for different address components
+      const addressKey = `${row.Address || ''}|${row.City || ''}|${row.State || ''}|${row['Postal Code'] || ''}`.toLowerCase().trim();
+      const streetKey = (row.Address || '').toLowerCase().trim();
+      const cityKey = (row.City || '').toLowerCase().trim();
+      const stateKey = (row.State || '').toLowerCase().trim();
+      const postalKey = (row['Postal Code'] || '').toLowerCase().trim();
+      
+      if (addressKey !== '|||') this.uniquenessTracker.originalDataSet.add(addressKey);
+      if (streetKey) this.uniquenessTracker.originalDataSet.add(streetKey);
+      if (cityKey) this.uniquenessTracker.originalDataSet.add(cityKey);
+      if (stateKey) this.uniquenessTracker.originalDataSet.add(stateKey);
+      if (postalKey) this.uniquenessTracker.originalDataSet.add(postalKey);
+    });
+    
+    console.log(`✅ UNIQUENESS: Loaded ${this.uniquenessTracker.originalDataSet.size} original data points`);
+  }
+
+  // Enhanced validation with uniqueness and original data checks
+  validateAddress(address: GeneratedAddress, country?: string): AddressValidationResult {
     const errors: string[] = [];
 
     // Check required fields
@@ -73,16 +118,8 @@ class AddressValidator {
 
     // Check for placeholder text
     const placeholderPatterns = [
-      /lorem ipsum/i,
-      /placeholder/i,
-      /example/i,
-      /test/i,
-      /dummy/i,
-      /fake/i,
-      /\[.*\]/,  // Check for [brackets]
-      /\{.*\}/,  // Check for {braces}
-      /xxx/i,
-      /sample/i
+      /lorem ipsum/i, /placeholder/i, /example/i, /test/i, /dummy/i, /fake/i,
+      /\[.*\]/, /\{.*\}/, /xxx/i, /sample/i
     ];
 
     const allFields = [address.street, address.city, address.state, address.postalCode].join(' ');
@@ -97,6 +134,19 @@ class AddressValidator {
       errors.push('Address appears to be a generic example');
     }
 
+    // NEW: Enhanced uniqueness validation
+    const uniquenessResult = this.validateUniqueness(address, country);
+    if (!uniquenessResult.isUnique) {
+      errors.push(...uniquenessResult.errors);
+    }
+
+    // NEW: Original data comparison
+    const originalDataResult = this.checkAgainstOriginalData(address);
+    if (!originalDataResult.isValid) {
+      errors.push(...originalDataResult.errors);
+      this.validationStats.originalDataMatches++;
+    }
+
     // Determine quality
     let quality: 'high' | 'medium' | 'low' = 'high';
     if (errors.length > 0) {
@@ -106,6 +156,8 @@ class AddressValidator {
     this.validationStats.total++;
     if (errors.length === 0) {
       this.validationStats.valid++;
+      // Add to uniqueness tracker if valid
+      this.addToUniquenessTracker(address, country);
     } else {
       this.validationStats.invalid++;
     }
@@ -117,20 +169,101 @@ class AddressValidator {
     };
   }
 
-  // NEW: Smart retry validation that identifies which addresses need to be retried
+  // NEW: Comprehensive uniqueness validation
+  private validateUniqueness(address: GeneratedAddress, country?: string): { isUnique: boolean; errors: string[] } {
+    const errors: string[] = [];
+    
+    // Create composite address key
+    const addressKey = `${address.street}|${address.city}|${address.state}|${address.postalCode}`.toLowerCase().trim();
+    
+    // Check global uniqueness
+    if (this.uniquenessTracker.globalAddressSet.has(addressKey)) {
+      errors.push('Duplicate address detected globally');
+      this.validationStats.duplicatesDetected++;
+    }
+    
+    // Check country-specific uniqueness if country provided
+    if (country) {
+      const countrySet = this.uniquenessTracker.countryAddressSets.get(country);
+      if (countrySet && countrySet.has(addressKey)) {
+        errors.push(`Duplicate address detected within ${country}`);
+        this.validationStats.duplicatesDetected++;
+      }
+    }
+    
+    // Check individual components for duplicates
+    const streetKey = address.street.toLowerCase().trim();
+    if (this.uniquenessTracker.globalAddressSet.has(`street:${streetKey}`)) {
+      errors.push('Duplicate street address detected');
+    }
+    
+    return {
+      isUnique: errors.length === 0,
+      errors
+    };
+  }
+
+  // NEW: Check against original data
+  private checkAgainstOriginalData(address: GeneratedAddress): { isValid: boolean; errors: string[] } {
+    const errors: string[] = [];
+    
+    const addressKey = `${address.street}|${address.city}|${address.state}|${address.postalCode}`.toLowerCase().trim();
+    const streetKey = address.street.toLowerCase().trim();
+    const cityKey = address.city.toLowerCase().trim();
+    const stateKey = address.state.toLowerCase().trim();
+    const postalKey = address.postalCode.toLowerCase().trim();
+    
+    if (this.uniquenessTracker.originalDataSet.has(addressKey)) {
+      errors.push('Generated address matches original data exactly');
+    }
+    
+    if (this.uniquenessTracker.originalDataSet.has(streetKey)) {
+      errors.push('Generated street matches original data');
+    }
+    
+    if (this.uniquenessTracker.originalDataSet.has(cityKey)) {
+      errors.push('Generated city matches original data');
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  }
+
+  // NEW: Add address to uniqueness tracker
+  private addToUniquenessTracker(address: GeneratedAddress, country?: string): void {
+    const addressKey = `${address.street}|${address.city}|${address.state}|${address.postalCode}`.toLowerCase().trim();
+    const streetKey = `street:${address.street.toLowerCase().trim()}`;
+    
+    this.uniquenessTracker.globalAddressSet.add(addressKey);
+    this.uniquenessTracker.globalAddressSet.add(streetKey);
+    
+    if (country) {
+      if (!this.uniquenessTracker.countryAddressSets.has(country)) {
+        this.uniquenessTracker.countryAddressSets.set(country, new Set());
+      }
+      this.uniquenessTracker.countryAddressSets.get(country)!.add(addressKey);
+    }
+  }
+
+  // Enhanced smart retry validation with detailed failure reasons
   validateAddressBatchWithSmartRetry(
     addresses: GeneratedAddress[],
     country: string
   ): SmartRetryResult {
-    console.log(`=== SMART RETRY: Validating batch of ${addresses.length} addresses for ${country} ===`);
+    console.log(`=== ENHANCED SMART RETRY: Validating batch of ${addresses.length} addresses for ${country} ===`);
     
     const validAddresses: GeneratedAddress[] = [];
     const invalidAddresses: GeneratedAddress[] = [];
     const qualityStats = { high: 0, medium: 0, low: 0 };
     const failedIndices: number[] = [];
+    const retryReasons: string[] = [];
+    let duplicates = 0;
+    let originalMatches = 0;
 
     addresses.forEach((address, index) => {
-      const validation = this.validateAddress(address);
+      const validation = this.validateAddress(address, country);
       qualityStats[validation.quality]++;
 
       if (validation.isValid) {
@@ -138,34 +271,53 @@ class AddressValidator {
       } else {
         invalidAddresses.push(address);
         failedIndices.push(index);
-        console.log(`❌ SMART RETRY: Invalid address at index ${index}:`, validation.errors);
+        
+        // Categorize failure reasons for better retry logic
+        const isDuplicate = validation.errors.some(e => e.includes('Duplicate'));
+        const isOriginalMatch = validation.errors.some(e => e.includes('original data'));
+        const isPlaceholder = validation.errors.some(e => e.includes('placeholder'));
+        
+        if (isDuplicate) {
+          duplicates++;
+          retryReasons.push('duplicate');
+        } else if (isOriginalMatch) {
+          originalMatches++;
+          retryReasons.push('original_match');
+        } else if (isPlaceholder) {
+          retryReasons.push('placeholder');
+        } else {
+          retryReasons.push('validation_error');
+        }
+        
+        console.log(`❌ ENHANCED RETRY: Invalid address at index ${index} (${country}):`, validation.errors);
       }
     });
 
     const successRate = addresses.length > 0 ? validAddresses.length / addresses.length : 0;
     
-    console.log(`✅ SMART RETRY: ${validAddresses.length}/${addresses.length} addresses valid (${(successRate * 100).toFixed(1)}%)`);
-    console.log(`SMART RETRY: Quality distribution - High: ${qualityStats.high}, Medium: ${qualityStats.medium}, Low: ${qualityStats.low}`);
+    console.log(`✅ ENHANCED RETRY: ${validAddresses.length}/${addresses.length} addresses valid (${(successRate * 100).toFixed(1)}%)`);
+    console.log(`ENHANCED RETRY: Quality - High: ${qualityStats.high}, Medium: ${qualityStats.medium}, Low: ${qualityStats.low}`);
+    console.log(`ENHANCED RETRY: Issues - Duplicates: ${duplicates}, Original matches: ${originalMatches}`);
 
-    // Track failed indices for this country
-    if (failedIndices.length > 0) {
-      this.retryTracker.failedAddressIndices.set(country, failedIndices);
-      console.log(`🔄 SMART RETRY: Marked ${failedIndices.length} addresses for retry in ${country}`);
-    }
-
-    // Determine if retry is needed and possible
-    const retryRequests: Array<{ country: string; count: number; failedIndices: number[] }> = [];
+    // Enhanced retry request with detailed reasons
+    const retryRequests: Array<{ country: string; count: number; failedIndices: number[]; reason: string }> = [];
     const currentRetryCount = this.retryTracker.countryRetryAttempts.get(country) || 0;
 
     if (failedIndices.length > 0 && currentRetryCount < this.retryTracker.maxRetryAttempts) {
+      const primaryReason = this.getMostCommonReason(retryReasons);
       retryRequests.push({
         country,
         count: failedIndices.length,
-        failedIndices
+        failedIndices,
+        reason: primaryReason
       });
-      console.log(`🚀 SMART RETRY: Will retry ${failedIndices.length} failed addresses for ${country} (attempt ${currentRetryCount + 1}/${this.retryTracker.maxRetryAttempts})`);
+      
+      // Store retry reasons for analysis
+      this.retryTracker.retryReasons.set(country, retryReasons);
+      
+      console.log(`🚀 ENHANCED RETRY: Will retry ${failedIndices.length} failed addresses for ${country} (attempt ${currentRetryCount + 1}/${this.retryTracker.maxRetryAttempts}) - Primary reason: ${primaryReason}`);
     } else if (failedIndices.length > 0) {
-      console.log(`⚠️ SMART RETRY: Max retry attempts reached for ${country}, keeping ${validAddresses.length} valid addresses`);
+      console.log(`⚠️ ENHANCED RETRY: Max retry attempts reached for ${country}, keeping ${validAddresses.length} valid addresses`);
     }
 
     return {
@@ -173,33 +325,41 @@ class AddressValidator {
       invalidAddresses,
       retryRequests,
       qualityStats,
-      successRate
+      successRate,
+      uniquenessStats: { duplicates, originalMatches }
     };
   }
 
-  // NEW: Method to increment retry attempts
+  private getMostCommonReason(reasons: string[]): string {
+    const counts = reasons.reduce((acc, reason) => {
+      acc[reason] = (acc[reason] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    return Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b, 'unknown');
+  }
+
   incrementRetryAttempt(country: string): void {
     const currentCount = this.retryTracker.countryRetryAttempts.get(country) || 0;
     this.retryTracker.countryRetryAttempts.set(country, currentCount + 1);
     this.validationStats.retries++;
-    console.log(`🔄 SMART RETRY: Incremented retry count for ${country} to ${currentCount + 1}`);
+    console.log(`🔄 ENHANCED RETRY: Incremented retry count for ${country} to ${currentCount + 1}`);
   }
 
-  // NEW: Check if country can be retried
   canRetryCountry(country: string): boolean {
     const currentCount = this.retryTracker.countryRetryAttempts.get(country) || 0;
     return currentCount < this.retryTracker.maxRetryAttempts;
   }
 
-  // NEW: Get retry statistics
-  getRetryStats(): Record<string, { attempts: number; maxAttempts: number; canRetry: boolean }> {
-    const stats: Record<string, { attempts: number; maxAttempts: number; canRetry: boolean }> = {};
+  getRetryStats(): Record<string, { attempts: number; maxAttempts: number; canRetry: boolean; reasons?: string[] }> {
+    const stats: Record<string, { attempts: number; maxAttempts: number; canRetry: boolean; reasons?: string[] }> = {};
     
     for (const [country, attempts] of this.retryTracker.countryRetryAttempts.entries()) {
       stats[country] = {
         attempts,
         maxAttempts: this.retryTracker.maxRetryAttempts,
-        canRetry: attempts < this.retryTracker.maxRetryAttempts
+        canRetry: attempts < this.retryTracker.maxRetryAttempts,
+        reasons: this.retryTracker.retryReasons.get(country)
       };
     }
     
@@ -338,10 +498,26 @@ class AddressValidator {
     return { ...this.validationStats };
   }
 
+  // NEW: Get enhanced statistics
+  getEnhancedStats() {
+    return {
+      validation: this.getValidationStats(),
+      uniqueness: {
+        globalAddresses: this.uniquenessTracker.globalAddressSet.size,
+        countriesTracked: this.uniquenessTracker.countryAddressSets.size,
+        originalDataPoints: this.uniquenessTracker.originalDataSet.size
+      },
+      retry: this.getRetryStats()
+    };
+  }
+
   resetValidationStats(): void {
-    this.validationStats = { total: 0, valid: 0, invalid: 0, retries: 0 };
+    this.validationStats = { total: 0, valid: 0, invalid: 0, retries: 0, duplicatesDetected: 0, originalDataMatches: 0 };
     this.retryTracker.countryRetryAttempts.clear();
     this.retryTracker.failedAddressIndices.clear();
+    this.retryTracker.retryReasons.clear();
+    this.uniquenessTracker.globalAddressSet.clear();
+    this.uniquenessTracker.countryAddressSets.clear();
   }
 }
 

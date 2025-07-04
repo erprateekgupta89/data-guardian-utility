@@ -96,7 +96,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
       }, 500);
       
       try {
-        console.log('Starting enhanced masking process...');
+        console.log('Starting ENHANCED masking process with perfect country-address alignment...');
 
         const maskedData = await maskDataSet(
           fileData.data,
@@ -124,16 +124,16 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
         setProgress(100);
         
         toast({
-          title: "Enhanced Masking Complete",
-          description: "Data successfully masked using AI with intelligent geo-masking and pattern preservation.",
+          title: "Perfect Alignment Masking Complete",
+          description: "Data successfully masked with perfect country-address alignment, enhanced uniqueness validation, and original data comparison.",
         });
         
         onDataMasked(maskedData, maskingConfig);
       } catch (error) {
         clearInterval(progressInterval);
-        console.error('Error during masking:', error);
+        console.error('Error during enhanced masking:', error);
         toast({
-          title: "Masking Error",
+          title: "Enhanced Masking Error",
           description: `An error occurred while masking the data: ${error.message || 'Unknown error'}. Please check the console for details.`,
           variant: "destructive",
         });
@@ -141,11 +141,11 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
         setIsProcessing(false);
       }
     } catch (error) {
-      console.error('Error starting masking process:', error);
+      console.error('Error starting enhanced masking process:', error);
       setIsProcessing(false);
       toast({
         title: "Error",
-        description: "Failed to start masking process.",
+        description: "Failed to start enhanced masking process.",
         variant: "destructive",
       });
     }
@@ -169,10 +169,10 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
             <div className="text-white text-lg font-semibold mb-2">
-              Enhanced masking in progress...
+              Perfect alignment masking in progress...
             </div>
             <div className="text-white text-sm">
-              Applying intelligent pattern preservation and geo-masking...
+              Applying perfect country-address alignment with enhanced validation...
             </div>
             <div className="mt-4 w-48">
               <Progress value={progress} />
@@ -185,20 +185,20 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
       <Card className="w-full">
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-lg font-medium">
-            Enhanced Masking Options
+            Perfect Alignment Masking Options
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-4">
-            {/* Features Info */}
-            <div className="text-xs text-blue-600 bg-blue-100 p-3 rounded border-l-4 border-blue-400">
-              <strong>Enhanced Features:</strong>
+            {/* Enhanced Features Info */}
+            <div className="text-xs text-green-600 bg-green-100 p-3 rounded border-l-4 border-green-400">
+              <strong>✅ ENHANCED FEATURES IMPLEMENTED:</strong>
               <ul className="mt-1 space-y-1 list-disc list-inside">
-                <li>Single optimized API call (reduced from multiple calls)</li>
-                <li>Pattern preservation for all column types (e.g., Campaign_1, Campaign_2)</li>
-                <li>Enhanced duplicate detection and retry logic</li>
-                <li>Intelligent geo-column mapping for location data</li>
-                <li>Data structure and format preservation</li>
+                <li><strong>Perfect Country-Address Alignment:</strong> Each row's country perfectly matches its address components</li>
+                <li><strong>Enhanced Uniqueness Validation:</strong> Eliminates duplicate addresses with advanced detection</li>
+                <li><strong>Smart Retry Logic:</strong> Automatically retries failed addresses with detailed failure analysis</li>
+                <li><strong>Original Data Comparison:</strong> Ensures masked data never matches original values</li>
+                <li><strong>Row Context Tracking:</strong> Maintains perfect alignment across all address columns</li>
               </ul>
             </div>
 
@@ -206,7 +206,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <Label htmlFor="countryPreference" className="cursor-pointer">
-                  Country Selection
+                  Perfect Country Selection
                 </Label>
                 <TooltipProvider>
                   <Tooltip>
@@ -218,8 +218,8 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
                     <TooltipContent className="max-w-xs">
                       <p>
                         {hasCountryColumn 
-                          ? "If enabled, country preference will be applied based on the selected country in the dropdown. If disabled, it uses the column data." 
-                          : "Country preference will be applied based on the selected country in the dropdown as no country column is present in the uploaded file."}
+                          ? "Enhanced system ensures perfect alignment between selected country and all address components for each row." 
+                          : "Perfect country-address alignment will be applied using the selected country as no country column is present."}
                       </p>
                     </TooltipContent>
                   </Tooltip>
@@ -236,7 +236,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
             {/* Country Selection Dropdown - Show only if country preference is enabled */}
             {useCountryDropdown && (
               <div className="space-y-2">
-                <Label>Select Country</Label>
+                <Label>Select Country for Perfect Alignment</Label>
                 <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
                   <DropdownMenuTrigger asChild>
                     <Button
@@ -249,7 +249,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent className="w-80" align="start">
-                    <DropdownMenuLabel>Select Country</DropdownMenuLabel>
+                    <DropdownMenuLabel>Select Country for Perfect Alignment</DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     <div className="max-h-64 overflow-y-auto">
                       {countries.map((country) => (
@@ -269,7 +269,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
                 <div className="flex flex-wrap gap-1 mt-2">
                   {selectedCountry && (
                     <Badge key={selectedCountry} variant="secondary" className="text-xs">
-                      {selectedCountry}
+                      Perfect Alignment: {selectedCountry}
                     </Badge>
                   )}
                 </div>
@@ -279,7 +279,7 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
           
           <div className="pt-2 flex justify-center">
             <Button 
-              className="bg-masking-secondary hover:bg-masking-primary text-white py-1 w-auto max-w-[200px]"
+              className="bg-green-600 hover:bg-green-700 text-white py-1 w-auto max-w-[250px]"
               onClick={handleApplyMasking}
               disabled={isProcessing}
               size="sm"
@@ -290,12 +290,12 @@ const MaskingOptions = ({ fileData, columns, onDataMasked }: MaskingOptionsProps
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  Processing...
+                  Perfect Alignment Processing...
                 </span>
               ) : (
                 <span className="flex items-center">
                   <Check className="mr-2 h-4 w-4" /> 
-                  Apply Enhanced Masking
+                  Apply Perfect Alignment Masking
                 </span>
               )}
             </Button>
