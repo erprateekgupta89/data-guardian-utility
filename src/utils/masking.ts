@@ -5,9 +5,27 @@ import { maskPersonalInfo, maskLocationData, maskDateTime } from "./dataTypeMask
 import { detectColumnDataType } from "./dataDetection";
 import { AzureOpenAIMasking, type AzureOpenAIMaskingOptions } from "./azureOpenAIMasking";
 import { PatternAnalyzer, type PatternAnalysis } from "./patternAnalysis";
+import { maskDataSetWithFaker } from "./fakerDataSet";
+import FakerMasking from "./fakerMasking";
 
-// Mask data based on its type and original format
-export const maskData = (value: string, dataType: DataType, format?: string, constantValues?: string[], patternAnalysis?: PatternAnalysis, index?: number): string => {
+// Enhanced mask data function with Faker.js option
+export const maskData = (
+  value: string, 
+  dataType: DataType, 
+  format?: string, 
+  constantValues?: string[], 
+  patternAnalysis?: PatternAnalysis, 
+  index?: number,
+  useFaker = false,
+  fakerService?: FakerMasking,
+  columnName?: string
+): string => {
+  // Use Faker.js if enabled and service is provided
+  if (useFaker && fakerService && columnName && typeof index === 'number') {
+    return fakerService.maskData(value, dataType, index, columnName, patternAnalysis, constantValues);
+  }
+
+  // Fall back to original masking logic
   if (!value || value.trim() === '') return value;
   
   // PRIORITY 1: Check for constant values first - NO sequential numbering for constant data
@@ -153,14 +171,26 @@ interface MaskingOptions {
   selectedCountries?: string[];
   useAzureOpenAI?: boolean;
   azureOpenAIConfig?: AzureOpenAIMaskingOptions;
+  useFaker?: boolean; // New option to use Faker.js instead of Azure OpenAI
+  onProgress?: (progress: number) => void;
 }
 
-// FIXED: Complete masking solution with perfect country-address alignment AND nationality synchronization
+// UPDATED: Complete masking solution with Faker.js or Azure OpenAI options
 export const maskDataSet = async (
   data: Record<string, string>[],
   columns: ColumnInfo[],
   options?: MaskingOptions
 ): Promise<Record<string, string>[]> => {
+  // NEW: Check if Faker.js should be used instead of Azure OpenAI
+  if (options?.useFaker) {
+    console.log('🎭 Using Faker.js for data masking');
+    return maskDataSetWithFaker(data, columns, {
+      preserveFormat: true,
+      useCountryLocale: true,
+      selectedCountries: options.selectedCountries,
+      onProgress: options.onProgress
+    });
+  }
   console.log('=== FIXED: Starting Perfect Country-Address-Nationality Alignment Masking ===');
   console.log(`Data rows: ${data.length}`);
   console.log(`Columns: ${columns.length}`);
